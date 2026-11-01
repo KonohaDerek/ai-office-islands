@@ -1,0 +1,13 @@
+settings.yaml
+settings.yaml.*.tmp
+.secrets/
+.docker-data/
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+.cache/
+# Local design QA evidence can contain user-provided reference screenshots.
+/qa/
+/design-qa.md

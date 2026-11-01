@@ -1,0 +1,39 @@
+name: ai-office
+
+services:
+  ai-office:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    env_file:
+      - ./.secrets/ai-office.env
+    ports:
+      - "127.0.0.1:4173:4173"
+    environment:
+      AI_OFFICE_IN_DOCKER: "1"
+      AI_OFFICE_SETTINGS_PATH: /app/.docker-data/settings.yaml
+      VITE_PUBLIC_DEMO: ${VITE_PUBLIC_DEMO:-false}
+      HERMES_BASE_URL: ${HERMES_BASE_URL:-http://host.docker.internal:8642/v1}
+      CODEX_HOME: /home/node/.codex
+      CODEX_IMPORT_HOME: /host-codex
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - claude-cli-home:/home/node/.claude
+      - codex-cli-home:/home/node/.codex
+      - office-settings:/app/.docker-data
+      - type: bind
+        source: ${CODEX_SESSIONS_DIR:-${HOME}/.codex/sessions}
+        target: /host-codex/sessions
+        read_only: true
+      - type: bind
+        source: ${CODEX_AGENTS_DIR:-${HOME}/.codex/agents}
+        target: /host-codex/agents
+        read_only: true
+
+volumes:
+  claude-cli-home:
+  codex-cli-home:
+  office-settings:

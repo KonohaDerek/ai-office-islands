@@ -1,0 +1,16 @@
+.git
+.secrets
+.docker-data
+.env
+.env.*
+!.env.example
+settings.yaml
+settings.yaml.*.tmp
+node_modules
+dist
+.cache
+/chat-preview.png
+/mobile-chat-preview.png
+/mobile-preview.png
+/office-preview.png
+qa
