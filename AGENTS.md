@@ -11,7 +11,7 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 ## AI Office prototype direction
 
 - Use an island virtual office with distinct bot avatars.
-- Preserve the user's screenshot grouping: 個人－投資、個人－影音部、外包案、個人－開發部 and its eight named groups.
+- Keep public demo content generic and free of client, vendor, and outsourced-project names. The seeded demo uses the three departments 個人－投資、個人－影音部、個人－開發部 and seven sample groups.
 - Keep bot and group navigation on the left; clicking either the map or sidebar opens a chat overlay; closing returns to the same office view.
 - Keep external credentials in the local Vite integration middleware; persist them only as AES-256-GCM ciphertext in the project settings.yaml with the encryption key in macOS Keychain. Never store credentials in browser storage or ship them in the client bundle.
 - Use Hermes Agent's OpenAI-compatible API server and xAI Grok's OpenAI-compatible API for live chat. Hermes can import the current API Server profile's Agent and sessions, plus Bot Mode profile names from the local Hermes profiles directory; distinguish roster discovery from a live per-profile API connection. Start Bot Mode chat only after a user explicitly enables and tests that profile's dedicated `/p/<profile>/v1` route. General Hermes group/session chats must use the selected group session on the default profile, never a member's Bot Mode route. Grok API does not expose the Grok web custom-bot/group directory. Codex CLI conversation and identifiable subagent transcripts may be imported from local session files as read-only history; do not imply new messages can be sent back to Codex CLI.
