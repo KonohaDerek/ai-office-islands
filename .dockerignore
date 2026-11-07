@@ -1,6 +1,7 @@
 .git
 .secrets
 .docker-data
+.local-data
 .env
 .env.*
 !.env.example
