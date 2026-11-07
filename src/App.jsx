@@ -16,13 +16,13 @@ const demoBots = [
  {id:'nova',name:'Nova',role:'DevOps / 發布工程',avatar:'character-tactical.png',hue:325,status:'檢查部署',x:62,y:39,zone:'dev'},
 ];
 const baseGroups = [
- {id:'invest',section:'個人－投資',name:'幣安合約團隊',members:['future','egg','ling'],preview:'研究報告已整理，等你確認。',unread:0},
- {id:'video',section:'個人－影音部',name:'影音部門',members:['future','hui','lan'],preview:'惠惠：剪輯素材都放好了。',unread:2},
- {id:'topic',section:'個人－影音部',name:'選題生成組',members:['future','lan','ling'],preview:'小嵐：這週的選題清單已更新。',unread:0},
- {id:'travel',section:'個人－影音部',name:'360 旅遊組',members:['egg','lan','hui'],preview:'旅遊影片的分鏡提案已完成。',unread:1},
- {id:'edit',section:'個人－影音部',name:'精華剪輯組',members:['future','hui','ling'],preview:'鈴：第二版字幕已檢查完成。',unread:0},
- {id:'live2d',section:'個人－開發部',name:'Live2D 拆件組',members:['hui','tuo','ling'],preview:'阿拓：角色圖層已整理完成。',unread:0},
- {id:'dev',section:'個人－開發部',name:'開發團隊',members:['future','tuo','nova','ling'],preview:'阿拓：辦公室原型可以試用了。',unread:3},
+ {id:'invest',section:'個人－投資',name:'投資研究組',members:['future','egg','ling'],preview:'研究報告已整理，等你確認。',unread:0},
+ {id:'video',section:'個人－影音部',name:'影音企劃組',members:['future','hui','lan'],preview:'惠惠：剪輯素材都放好了。',unread:2},
+ {id:'topic',section:'個人－影音部',name:'選題企劃組',members:['future','lan','ling'],preview:'小嵐：這週的選題清單已更新。',unread:0},
+ {id:'travel',section:'個人－影音部',name:'旅遊企劃組',members:['egg','lan','hui'],preview:'旅遊影片的分鏡提案已完成。',unread:1},
+ {id:'edit',section:'個人－影音部',name:'影片剪輯組',members:['future','hui','ling'],preview:'鈴：第二版字幕已檢查完成。',unread:0},
+ {id:'live2d',section:'個人－開發部',name:'角色資產組',members:['hui','tuo','ling'],preview:'阿拓：角色圖層已整理完成。',unread:0},
+ {id:'dev',section:'個人－開發部',name:'開發協作組',members:['future','tuo','nova','ling'],preview:'阿拓：辦公室原型可以試用了。',unread:3},
 ];
 const sections=['個人－投資','個人－影音部','個人－開發部'];
 const campusTerrainOptions=[
