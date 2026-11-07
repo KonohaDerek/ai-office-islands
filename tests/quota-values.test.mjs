@@ -22,3 +22,26 @@ test('quota status distinguishes unsupported, failed, unknown, and exhausted', (
   assert.equal(quotaStatus({supported: true, quota: {available: true, windows: [{remainingPercent: 0}]}}), 'exhausted');
   assert.equal(quotaStatus({supported: true, quota: {available: true, windows: [{remainingPercent: 0}, {remainingPercent: 4}]}}), 'available');
 });
+
+test('quota source signatures change when connected or logged-in sources change', async () => {
+  const {quotaSourceSignature} = await import('../src/quota-utils.mjs');
+  assert.equal(quotaSourceSignature({}, {}), '');
+  assert.notEqual(quotaSourceSignature({}, {}), quotaSourceSignature({Grok: {connected: true}}, {}));
+  assert.notEqual(quotaSourceSignature({}, {}), quotaSourceSignature({}, {CodexOAuth: {loggedIn: true}}));
+});
+
+test('roles never default to the read-only Codex CLI archive runtime', async () => {
+  const {initialRoleRuntimeSource, resolveRoleRuntimeSource} = await import('../src/quota-utils.mjs');
+  assert.equal(initialRoleRuntimeSource('CodexCLI', {CodexCLI: {connected: true}}), '');
+  assert.equal(initialRoleRuntimeSource('Hermes', {Hermes: {connected: true}}), 'Hermes');
+  assert.equal(initialRoleRuntimeSource('Hermes', {Hermes: {connected: false}}), '');
+  assert.equal(resolveRoleRuntimeSource('CodexCLI', 'Grok'), 'Grok');
+});
+
+test('missing reset dates stay unknown instead of becoming the Unix epoch', async () => {
+  const {formatQuotaDate} = await import('../src/quota-utils.mjs');
+  assert.equal(formatQuotaDate(null), '供應商未提供');
+  assert.equal(formatQuotaDate(undefined), '供應商未提供');
+  assert.equal(formatQuotaDate(''), '供應商未提供');
+  assert.equal(formatQuotaDate('not-a-date'), '供應商未提供');
+});

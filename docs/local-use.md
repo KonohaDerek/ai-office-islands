@@ -11,14 +11,7 @@ npm install
 npm run dev:local
 ```
 
-開啟 `http://127.0.0.1:4173`。本機啟動腳本會綁定 loopback、使用 `http://127.0.0.1:8642/v1` 作為 Hermes API 網址，並讀取 `.secrets/ai-office.env` 的加密金鑰。API 設定會以 AES-256-GCM 加密保存於 `.local-data/settings.yaml`；兩者皆不會提交到 Git。若尚未有 `.secrets/ai-office.env`，可先建立：
-
-```sh
-mkdir -p .secrets
-chmod 700 .secrets
-{ printf 'AI_OFFICE_ENCRYPTION_KEY='; openssl rand -hex 32; } > .secrets/ai-office.env
-chmod 600 .secrets/ai-office.env
-```
+開啟 `http://127.0.0.1:4173`。本機啟動腳本會綁定 loopback，並使用 `http://127.0.0.1:8642/v1` 作為 Hermes API 網址。API 設定會以 AES-256-GCM 加密保存於 `.local-data/settings.yaml`，加密金鑰由 macOS Keychain 管理；首次使用時系統可能要求允許 Keychain 存取。原生本機啟動不讀取專案內的明文金鑰檔，也不會覆寫或輪替既有 Keychain 金鑰。
 
 接著在「連接來源」輸入 API 金鑰。Hermes 預設使用 `http://127.0.0.1:8642/v1`；需在 Hermes 設定 `API_SERVER_ENABLED=true` 與 `API_SERVER_KEY`。Grok 預設使用 `https://api.x.ai/v1`。停止本機 Vite 可在執行中的終端機按 `Ctrl+C`。
 

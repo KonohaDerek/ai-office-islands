@@ -19,3 +19,12 @@ test('other repeated events deduplicate briefly, allowing later events through',
   assert.equal(isDuplicateNotification([event], event, now), true);
   assert.equal(isDuplicateNotification([{...event, createdAt: new Date(now - 30_000).toISOString()}], event, now), false);
 });
+
+test('notification targets must still exist in the active office', async () => {
+  const {notificationTargetExists} = await import('../src/notification-utils.mjs');
+  const item = {...candidate, targetId: 'group-1'};
+  assert.equal(notificationTargetExists(item, 'office-1', [{id: 'group-1'}], []), true);
+  assert.equal(notificationTargetExists(item, 'office-1', [], []), false);
+  assert.equal(notificationTargetExists(item, 'office-2', [{id: 'group-1'}], []), false);
+  assert.equal(notificationTargetExists({...item, targetId: ''}, 'office-1', [], []), true);
+});

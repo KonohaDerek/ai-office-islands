@@ -4,11 +4,7 @@ set -eu
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_dir"
 
-if [ -f .secrets/ai-office.env ]; then
-  set -a
-  . ./.secrets/ai-office.env
-  set +a
-fi
+unset AI_OFFICE_ENCRYPTION_KEY AI_OFFICE_ENCRYPTION_KEY_FILE
 
 mkdir -p .local-data
 chmod 700 .local-data

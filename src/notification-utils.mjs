@@ -7,3 +7,9 @@ export function isDuplicateNotification(items, candidate, now = Date.now()) {
     && now - Date.parse(item.createdAt) >= 0
     && now - Date.parse(item.createdAt) < maxAge);
 }
+
+export function notificationTargetExists(item, activeOfficeId, groups, bots) {
+  if (!item?.targetId) return true;
+  if (item.officeId !== activeOfficeId) return false;
+  return groups.some(group => group.id === item.targetId) || bots.some(bot => bot.id === item.targetId);
+}

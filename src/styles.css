@@ -101,6 +101,7 @@
 
 .sidebar-quota{max-height:142px;overflow:auto;padding:7px 16px 12px;border-top:1px solid var(--border);scrollbar-width:thin;scrollbar-color:#dce4dc transparent}
 .sidebar-quota-row{display:flex;align-items:center;gap:9px;width:100%;min-height:30px;padding:4px 6px;border-radius:7px;text-align:left}
+.sidebar-quota-empty{width:100%;min-height:30px;padding:4px 6px;border:0;border-radius:7px;background:transparent;color:#70806d;text-align:left;font-size:10px}.sidebar-quota-empty:hover{background:#eff3eb}
 .sidebar-quota-row:hover{background:#eff3eb}
 .integration-mark.quota-source-icon{width:19px;height:19px;flex:0 0 19px;border-radius:6px;font-size:9px}
 .sidebar-quota-meter{display:block;flex:1;min-width:0;height:6px;border-radius:99px;overflow:hidden;background:#dfe6dc}
