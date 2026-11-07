@@ -4,6 +4,7 @@ import {access, chmod, mkdir, open, readFile, readdir, rename, stat, unlink, wri
 import {basename, dirname, join} from 'node:path';
 import {homedir, tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
+import {clampQuotaPercent, finiteQuotaNumber} from './quota-values.mjs';
 
 const connections = new Map();
 const savedCredentials = new Map();
@@ -163,6 +164,164 @@ async function inspectCliAuth(provider) {
     }
     return {available: true, loggedIn: false, detail: error.message.slice(0, 180)};
   }
+}
+
+async function readCodexQuota() {
+  const executable = await findExecutable('codex');
+  if (!executable) return {available: false, reason: '找不到 Codex CLI。'};
+  const auth = await inspectCliAuth('CodexOAuth');
+  if (!auth.loggedIn) return {available: false, reason: auth.detail || 'Codex CLI 尚未使用 ChatGPT 登入。'};
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, ['app-server', '--listen', 'stdio://'], {
+      cwd: tmpdir(),
+      env: {...process.env, NO_COLOR: '1', CI: '1'},
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let buffer = '';
+    let settled = false;
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill('SIGTERM');
+      error ? reject(error) : resolve(result);
+    };
+    const send = value => child.stdin.write(`${JSON.stringify(value)}\n`);
+    const timer = setTimeout(() => finish(new Error('讀取 Codex 額度逾時。')), 12_000);
+    child.stdout.setEncoding('utf8').on('data', chunk => {
+      buffer += chunk;
+      let newline;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line) continue;
+        let message;
+        try { message = JSON.parse(line); } catch { continue; }
+        if (message.id === 1) {
+          if (message.error) return finish(new Error('Codex CLI 額度介面初始化失敗。'));
+          send({method: 'initialized', params: {}});
+          send({method: 'account/rateLimits/read', id: 2, params: {}});
+        } else if (message.id === 2) {
+          if (message.error) return finish(new Error(message.error.message || 'Codex CLI 無法讀取帳戶額度。'));
+          const result = message.result || {};
+          const limits = result.rateLimitsByLimitId?.codex || result.rateLimits || {};
+          const windowData = (key, label) => {
+            const item = limits[key];
+            const used = finiteQuotaNumber(item?.usedPercent);
+            if (used === null) return null;
+            const usedPercent = clampQuotaPercent(used);
+            const reset = Number(item.resetsAt);
+            return {
+              label,
+              usedPercent,
+              remainingPercent: Math.max(0, 100 - usedPercent),
+              windowDurationMins: Number(item.windowDurationMins) || null,
+              resetsAt: Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toISOString() : null,
+            };
+          };
+          finish(null, {
+            available: true,
+            planType: limits.planType || null,
+            observedAt: new Date().toISOString(),
+            windows: [windowData('primary', '主要額度'), windowData('secondary', '週額度')].filter(Boolean),
+            spendLimit: limits.individualLimit ? {
+              limit: String(limits.individualLimit.limit || ''),
+              used: String(limits.individualLimit.used || ''),
+              remainingPercent: clampQuotaPercent(limits.individualLimit.remainingPercent),
+              resetsAt: Number.isFinite(Number(limits.individualLimit.resetsAt)) && Number(limits.individualLimit.resetsAt) > 0
+                ? new Date(Number(limits.individualLimit.resetsAt) * 1000).toISOString()
+                : null,
+            } : null,
+            credits: limits.credits ? {
+              hasCredits: Boolean(limits.credits.hasCredits),
+              unlimited: Boolean(limits.credits.unlimited),
+              balance: typeof limits.credits.balance === 'string' ? limits.credits.balance : null,
+            } : null,
+          });
+        }
+      }
+    });
+    child.on('error', error => finish(new Error(`無法啟動 Codex 額度讀取：${error.message}`)));
+    child.on('close', code => {
+      if (!settled) finish(new Error(code === 0 ? 'Codex 額度讀取程序提前結束。' : 'Codex CLI 額度讀取失敗。'));
+    });
+    send({method: 'initialize', id: 1, params: {clientInfo: {name: 'ai-office-islands', title: 'AI Office Islands', version: '0.0.0'}}});
+  });
+}
+
+async function readClaudeOAuthQuota() {
+  const credentialsPath = join(process.env.CLAUDE_CONFIG_DIR || join(process.env.HOME || homedir(), '.claude'), '.credentials.json');
+  let credentials;
+  try { credentials = JSON.parse(await readFile(credentialsPath, 'utf8')); }
+  catch (error) {
+    if (error.code === 'ENOENT') return {available: false, reason: 'Claude CLI 憑證由系統 Keychain 管理，或找不到本機 OAuth 憑證檔；請從 Claude 帳戶頁查看。'};
+    return {available: false, reason: '無法讀取 Claude CLI OAuth 狀態。'};
+  }
+  const oauth = credentials.claudeAiOauth || credentials;
+  const accessToken = oauth.accessToken || oauth.access_token;
+  if (typeof accessToken !== 'string' || !accessToken) return {available: false, reason: 'Claude CLI 憑證沒有可讀取的 OAuth 權杖；請從 Claude 帳戶頁查看。'};
+
+  const response = await fetch('https://api.anthropic.com/api/oauth/usage', {
+    signal: AbortSignal.timeout(12_000),
+    headers: {Authorization: `Bearer ${accessToken}`, 'anthropic-beta': 'oauth-2025-04-20', Accept: 'application/json'},
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = response.status === 429 ? 'Claude 用量查詢目前被限流，請稍後再試或直接開啟 Claude 帳戶頁。' : response.status === 401 ? 'Claude CLI OAuth 已過期，請重新登入 Claude CLI。' : `Claude 用量查詢失敗（HTTP ${response.status}）。`;
+    return {available: false, reason: detail};
+  }
+  const windows = [];
+  const rows = Array.isArray(data.limits) ? data.limits : [];
+  const usageItems = [
+    [data.five_hour || rows.find(item => item.kind === 'session' || item.group === 'session'), '5 小時額度'],
+    [data.seven_day || rows.find(item => item.kind === 'weekly_all' || (item.group === 'weekly' && !item.scope)), '每週額度'],
+    [data.seven_day_sonnet || rows.find(item => item.kind === 'weekly_scoped' && /sonnet/i.test(item.scope?.model?.display_name || item.scope?.model?.id || '')), 'Sonnet 每週額度'],
+    [data.seven_day_opus || rows.find(item => item.kind === 'weekly_scoped' && /opus/i.test(item.scope?.model?.display_name || item.scope?.model?.id || '')), 'Opus 每週額度'],
+  ];
+  for (const [item, label] of usageItems) {
+    const usage = Number(item?.utilization ?? item?.percent);
+    if (!item || !Number.isFinite(usage)) continue;
+    const usedPercent = Math.max(0, Math.min(100, usage));
+    const resetValue = item.resets_at || item.resetsAt || null;
+    const resetDate = resetValue ? new Date(typeof resetValue === 'number' && resetValue < 1_000_000_000_000 ? resetValue * 1000 : resetValue) : null;
+    windows.push({label, usedPercent, remainingPercent: Math.max(0, 100 - usedPercent), resetsAt: resetDate && !Number.isNaN(resetDate.valueOf()) ? resetDate.toISOString() : null});
+  }
+  return {available: windows.length > 0, windows, observedAt: new Date().toISOString(), reason: windows.length ? '' : 'Claude OAuth 沒有回報可用額度視窗。'};
+}
+
+const quotaProviderInfo = {
+  Hermes: {label: 'Hermes Agent API', reason: 'Hermes 可代理不同上游模型或本機模型，沒有通用的剩餘額度與重置 API。請查看 Hermes 設定的上游供應商。'},
+  Grok: {label: 'Grok API', url: 'https://console.x.ai/team/usage', reason: '一般 xAI API Key 無法查詢帳戶剩餘額度。xAI 的預付餘額與月支出上限需透過 Management API 讀取；AI Office 目前尚未接入 Management Key 與 Team ID，因此此處不會推估額度或重置時間。'},
+  Claude: {label: 'Claude API', url: 'https://platform.claude.com/usage', reason: '目前連線使用 API Key；一般 API Key 無法讀取帳戶剩餘額度。組織用量報表需另外授權的管理憑證。'},
+  OpenAI: {label: 'OpenAI API', url: 'https://platform.openai.com/usage', reason: '目前連線使用 API Key；API 用量與帳戶預付餘額不會由一般 API Key 回報。'},
+  ClaudeOAuth: {label: 'Claude Code OAuth', url: 'https://claude.ai/settings/usage', reason: 'Claude Code 的方案用量可在 Claude 帳戶頁查看。'},
+};
+
+async function readQuotaOverview() {
+  const cli = await Promise.all([inspectCliAuth('ClaudeOAuth'), inspectCliAuth('CodexOAuth')]);
+  const sources = [];
+  for (const provider of ['Hermes', 'Grok', 'Claude', 'OpenAI']) {
+    const live = connections.get(provider);
+    const saved = savedCredentials.get(provider);
+    if (!live && !saved) continue;
+    const info = quotaProviderInfo[provider];
+    sources.push({id: provider, label: info.label, connected: Boolean(live), model: live?.model || saved?.model || '', supported: false, url: info.url || null, reason: info.reason});
+  }
+  if (cli[0].loggedIn || connections.has('ClaudeOAuth')) {
+    const info = quotaProviderInfo.ClaudeOAuth;
+    let quota;
+    try { quota = await readClaudeOAuthQuota(); }
+    catch (error) { quota = {available: false, reason: error.message || info.reason}; }
+    sources.push({id: 'ClaudeOAuth', label: info.label, connected: connections.has('ClaudeOAuth'), model: 'Claude Code', supported: true, quota, url: info.url, reason: quota.available ? '' : quota.reason || info.reason});
+  }
+  if (cli[1].loggedIn || connections.has('CodexOAuth')) {
+    let quota;
+    try { quota = await readCodexQuota(); }
+    catch (error) { quota = {available: false, reason: error.message}; }
+    sources.push({id: 'CodexOAuth', label: 'Codex CLI OAuth', connected: connections.has('CodexOAuth'), model: quota.planType || 'ChatGPT 方案', supported: true, quota, url: 'https://chatgpt.com/settings/usage', reason: quota.available ? '' : quota.reason || '目前讀不到 Codex 帳戶額度。'});
+  }
+  return {sources, observedAt: new Date().toISOString()};
 }
 
 async function chatWithLocalCli(provider, messages) {
@@ -663,6 +822,9 @@ export function integrationsPlugin() {
           if (req.method === 'GET' && path === '/api/integrations/status') {
             const [claudeOAuth, codexOAuth] = await Promise.all([inspectCliAuth('ClaudeOAuth'), inspectCliAuth('CodexOAuth')]);
             return json(res, 200, {providers: publicState(), cli: {ClaudeOAuth: claudeOAuth, CodexOAuth: codexOAuth}});
+          }
+          if (req.method === 'GET' && path === '/api/integrations/quotas') {
+            return json(res, 200, await readQuotaOverview());
           }
           if (req.method === 'GET' && path === '/api/integrations/hermes/bots') {
             return json(res, 200, {bots: await readHermesBotRoster()});

@@ -9,15 +9,16 @@ React + Vite 的互動原型，支援本機接上 Hermes Agent API 與 Grok／Op
 - 每個部門木牌可切換四款子島初始景觀；選擇依辦公室與部門分開保存。
 - 點選 bot 或群組開啟對話遮罩，關閉後回到同一個島嶼畫面。
 - 在「連接來源」設定 Hermes 或 Grok API，測試連線、讀取模型、指定目前辦公室的聊天來源。
+- 本機額度面板可讀取 Codex CLI OAuth 的方案用量視窗、剩餘百分比與重置時間；Claude Code OAuth 會嘗試讀取 CLI 回報的用量。Hermes、Grok、Claude API 與 OpenAI API Key 顯示供應商用量頁，若目前憑證沒有可讀取的剩餘額度 API，面板會明確說明。
 - 可選擇匯入目前 Hermes profile 回報的 Agent 與工作階段；工作階段訊息會載入島上對話，後續訊息沿用原 Hermes session。
 - 選定來源後，bot 私聊會帶入角色描述；群組對話會以該群組的協作窗口回覆。
 - 尚未選定 AI 來源時，對話會明確顯示為本機示範，不會假裝已呼叫外部模型。
 
 ## 接入方式與範圍
 
-此原型的連線代理只在 Vite 開發伺服器運作。請用 npm run dev -- --host 127.0.0.1 --port 4173 開啟，並在「連接來源」輸入 API 網址和金鑰。Hermes 預設網址為 http://127.0.0.1:8642/v1，需先在 Hermes 啟用 OpenAI-compatible API Server，設定 API_SERVER_ENABLED=true 與 API_SERVER_KEY，並啟動 hermes gateway。Grok 預設使用 https://api.x.ai/v1；也能輸入其他 OpenAI 相容服務網址。
+此原型的連線代理只在本機 Vite 開發伺服器運作。安裝相依套件後，使用 `npm run dev:local` 啟動；它會綁定 `127.0.0.1:4173`、讀取本機私有設定，並以 `http://127.0.0.1:8642/v1` 連到主機上的 Hermes。需先在 Hermes 啟用 OpenAI-compatible API Server，設定 `API_SERVER_ENABLED=true` 與 `API_SERVER_KEY`，並啟動 Hermes gateway。Grok 預設使用 `https://api.x.ai/v1`；也能輸入其他 OpenAI 相容服務網址。
 
-API 金鑰只送到僅監聽本機的 Vite 後端，不會進入 localStorage 或前端 bundle。連線成功後，後端使用 AES-256-GCM 將來源網址、模型與金鑰加密寫入專案根目錄的 `settings.yaml`；解密金鑰存在目前使用者的 macOS Keychain，採用 Keychain 預設的應用程式存取控制且不要求同步。設定檔權限限制為目前使用者。Vite 重啟後會自動解密並重測連線；若 Keychain 無法使用，介面會標示該連線只在本次伺服器執行期間有效。`settings.yaml` 已加入忽略清單，不會隨專案提交。部署成靜態網站時不會提供這個代理。
+API 金鑰只送到僅監聽本機的 Vite 後端，不會進入 localStorage 或前端 bundle。連線成功後，後端使用 AES-256-GCM 將來源網址、模型與金鑰加密寫入 `.local-data/settings.yaml`；解密金鑰由 `.secrets/ai-office.env` 提供並限制只有目前使用者可讀。設定檔與金鑰都已加入忽略清單，不會隨專案提交。Vite 重啟後會自動解密並重測連線。部署成靜態網站時不會提供這個代理。
 
 ## 公開展示 Demo（GitHub Pages）
 
@@ -27,7 +28,10 @@ API 金鑰只送到僅監聽本機的 Vite 後端，不會進入 localStorage �
 
 GitHub Pages 是靜態網站託管，無法執行本專案的本機整合服務。請勿把 API 金鑰、OAuth 權杖、Hermes profile 或私人對話放進公開 repository。真實連線請在自己控制的電腦上使用本機 Vite 或 Docker Compose；不要把這個原型的本機整合服務直接公開到網際網路。部署設定與 demo 操作請看 [`docs/github-pages.md`](docs/github-pages.md)、[`docs/demo.md`](docs/demo.md) 及 [`docs/local-use.md`](docs/local-use.md)。
 
-### Docker Compose
+### Docker Compose（可選）
+
+日常真實使用請在本機執行 `npm run dev:local`，讓 AI Office 透過 `127.0.0.1` 連接本機 Hermes API。Docker Compose 僅供需要容器隔離的情境；容器需使用 `host.docker.internal` 連 Hermes。
+
 
 Docker 版本用專屬的加密金鑰保存 API 設定，並以 named volumes 保存容器內的 Claude Code 與 Codex CLI 登入狀態。首次啟動前，在專案根目錄產生本機金鑰，再建置並啟動：
 
@@ -60,7 +64,7 @@ xAI API 提供模型對話，不等於 Grok 網頁裡的自訂 bot、群組和�
 
 ~~~sh
 npm install
-npm run dev -- --host 127.0.0.1 --port 4173
+npm run dev:local
 npm run build
 ~~~
 

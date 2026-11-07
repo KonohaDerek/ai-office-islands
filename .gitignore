@@ -2,6 +2,7 @@ settings.yaml
 settings.yaml.*.tmp
 .secrets/
 .docker-data/
+.local-data/
 .env
 .env.*
 !.env.example
