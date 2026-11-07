@@ -17,9 +17,22 @@ export function taskStatusLabel(status) {
 }
 
 export function selectMentionedAgents(text, group, resolveAgent) {
-  if (/(?:@all|全員|大家|各位|所有人)/i.test(text)) return group.members.map(resolveAgent).filter(Boolean);
-  const normalized = text.toLocaleLowerCase();
-  return group.members.map(resolveAgent).filter(agent => agent && normalized.includes(`@${agent.name.toLocaleLowerCase()}`));
+  if (/@all(?![\p{L}\p{N}_])/iu.test(text) || /(全員|大家|各位|所有人)/.test(text)) {
+    return group.members.map(resolveAgent).filter(isLiveAgent);
+  }
+  return group.members.map(resolveAgent).filter(agent => {
+    if (!isLiveAgent(agent)) return false;
+    const mention = new RegExp(`@${escapeRegExp(agent.name)}(?![\\p{L}\\p{N}_])`, 'iu');
+    return mention.test(text);
+  });
+}
+
+function isLiveAgent(agent) {
+  return Boolean(agent && !agent.codexReadOnly && agent.source !== 'CodexCLI');
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function inferCollaborationMode(text) {
