@@ -1,0 +1,21 @@
+name = "ai-office-integration"
+main = "index.mjs"
+compatibility_date = "2026-11-01"
+
+[durable_objects]
+bindings = [{ name = "TASK_QUEUE", class_name = "TaskQueue" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TaskQueue"]
+
+[vars]
+INSTALLATION_ID = "default"
+# Explicitly set these lists before registering public webhooks.
+ENABLED_AGENT_IDS = ""
+ALLOWED_TELEGRAM_CHAT_IDS = ""
+ALLOWED_DISCORD_GUILD_IDS = ""
+ALLOWED_DISCORD_USER_IDS = ""
+
+[observability]
+enabled = true

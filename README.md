@@ -18,7 +18,7 @@ React + Vite 的互動原型，支援本機接上 Hermes Agent API 與 Grok／Op
 
 此原型的連線代理只在本機 Vite 開發伺服器運作。安裝相依套件後，使用 `npm run dev:local` 啟動；它會綁定 `127.0.0.1:4173`、讀取本機私有設定，並以 `http://127.0.0.1:8642/v1` 連到主機上的 Hermes。需先在 Hermes 啟用 OpenAI-compatible API Server，設定 `API_SERVER_ENABLED=true` 與 `API_SERVER_KEY`，並啟動 Hermes gateway。Grok 預設使用 `https://api.x.ai/v1`；也能輸入其他 OpenAI 相容服務網址。
 
-API 金鑰只送到僅監聽本機的 Vite 後端，不會進入 localStorage 或前端 bundle。連線成功後，後端使用 AES-256-GCM 將來源網址、模型與金鑰加密寫入 `.local-data/settings.yaml`；解密金鑰由 `.secrets/ai-office.env` 提供並限制只有目前使用者可讀。設定檔與金鑰都已加入忽略清單，不會隨專案提交。Vite 重啟後會自動解密並重測連線。部署成靜態網站時不會提供這個代理。
+API 金鑰只送到僅監聽本機的 Vite 後端，不會進入 localStorage 或前端 bundle。連線成功後，後端使用 AES-256-GCM 將來源網址、模型與金鑰加密寫入 `~/Documents/Private/09_AI/ai-office-islands/settings.yaml`，解密金鑰由 macOS Keychain 管理。從主工作目錄或隔離 worktree 啟動都會沿用這份設定；如需覆寫路徑，可設定 `AI_OFFICE_SETTINGS_PATH`。設定檔已加入忽略清單，不會隨專案提交。Vite 重啟後會自動解密並重測連線。部署成靜態網站時不會提供這個代理。
 
 ## 公開展示 Demo（GitHub Pages）
 
