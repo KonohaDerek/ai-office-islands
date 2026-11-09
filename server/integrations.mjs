@@ -9,9 +9,10 @@ import {clampQuotaPercent, finiteQuotaNumber} from './quota-values.mjs';
 const connections = new Map();
 const savedCredentials = new Map();
 const hermesProfileCredentials = new Map();
+let integrationBridgeConfig = null;
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const projectDir = dirname(moduleDir);
-const settingsPath = process.env.AI_OFFICE_SETTINGS_PATH || join(projectDir, 'settings.yaml');
+const settingsPath = process.env.AI_OFFICE_SETTINGS_PATH || join(homedir(), 'Documents', 'Private', '09_AI', 'ai-office-islands', 'settings.yaml');
 const keychainHelperPath = join(moduleDir, 'keychain.swift');
 const swiftModuleCachePath = '/private/tmp/ai-office-swift-module-cache';
 const settingsAad = Buffer.from('ai-office-encrypted-settings-v1');
@@ -688,14 +689,14 @@ async function writeEncryptedSettings() {
       apiKey: credential.apiKey,
       model: credential.model || '',
     }]));
-    if (!Object.keys(providers).length && !Object.keys(hermesProfiles).length) {
+    if (!Object.keys(providers).length && !Object.keys(hermesProfiles).length && !integrationBridgeConfig) {
       await unlink(settingsPath).catch(error => { if (error.code !== 'ENOENT') throw error; });
       return;
     }
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', await encryptionKey(), iv);
     cipher.setAAD(settingsAad);
-    const ciphertext = Buffer.concat([cipher.update(JSON.stringify({version: 1, providers, hermesProfiles}), 'utf8'), cipher.final()]);
+    const ciphertext = Buffer.concat([cipher.update(JSON.stringify({version: 1, providers, hermesProfiles, integrationBridge: integrationBridgeConfig}), 'utf8'), cipher.final()]);
     const yaml = [
       'format: ai-office-encrypted-settings-v1',
       'algorithm: AES-256-GCM',
@@ -1123,6 +1124,11 @@ export function integrationsPlugin() {
             let apiKey = connection.apiKey;
             let model = connection.model;
             const profileId = input.provider === 'Hermes' ? String(input.hermesProfileId || '') : '';
+            if (input.model && !profileId) {
+              const requestedModel = String(input.model);
+              if (!connection.models.includes(requestedModel)) return json(res, 400, {error: '這個模型不在來源回傳的清單中。'});
+              model = requestedModel;
+            }
             if (profileId) {
               if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(profileId)) return json(res, 400, {error: 'Hermes profile 名稱格式錯誤。'});
               if (!(await readHermesBotRoster()).some(bot => bot.hermesProfileId === profileId)) return json(res, 404, {error: '找不到這個 Hermes Bot Mode profile。'});
@@ -1130,8 +1136,15 @@ export function integrationsPlugin() {
               apiKey = profileCredential?.apiKey || await readHermesProfileApiKey(profileId);
               if (!apiKey) return json(res, 409, {error: `這個 Hermes Bot profile 尚未啟用專屬 API 連線。請先選「啟用 Bot 對話」。`});
               requestUrl = `${hermesApiRoot(connection)}/p/${encodeURIComponent(profileId)}/v1/chat/completions`;
-              model = profileCredential?.model || model;
-              if (!profileCredential?.model) {
+              const profileModel = profileCredential?.model || '';
+              if (input.model && input.model !== profileModel) {
+                const modelData = await requestJson(`${hermesApiRoot(connection)}/p/${encodeURIComponent(profileId)}/v1/models`, apiKey);
+                const models = Array.isArray(modelData?.data) ? modelData.data.map(item => item?.id).filter(item => typeof item === 'string') : [];
+                if (!models.includes(String(input.model))) return json(res, 400, {error: '這個模型不在 Hermes Bot profile 回傳的清單中。'});
+                model = String(input.model);
+              } else if (profileModel) {
+                model = profileModel;
+              } else {
                 const modelData = await requestJson(`${hermesApiRoot(connection)}/p/${encodeURIComponent(profileId)}/v1/models`, apiKey);
                 model = modelData?.data?.find(item => typeof item?.id === 'string')?.id || model;
               }
@@ -1180,6 +1193,7 @@ export function integrationsPlugin() {
 export async function loadEnvironmentConnections() {
   try {
     const stored = await readEncryptedSettings();
+    integrationBridgeConfig = stored.integrationBridge && typeof stored.integrationBridge === 'object' ? stored.integrationBridge : null;
     for (const [profileId, credential] of Object.entries(stored.hermesProfiles || {})) {
       if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(profileId) && typeof credential?.apiKey === 'string' && credential.apiKey) {
         hermesProfileCredentials.set(profileId, {apiKey: credential.apiKey, model: typeof credential.model === 'string' ? credential.model : ''});
@@ -1220,4 +1234,42 @@ export async function loadEnvironmentConnections() {
       console.warn(`[AI Office] ${provider} environment connection unavailable.`);
     }
   }
+}
+
+export async function readIntegrationBridgeConfig() {
+  if (integrationBridgeConfig) return structuredClone(integrationBridgeConfig);
+  const stored = await readEncryptedSettings();
+  integrationBridgeConfig = stored.integrationBridge && typeof stored.integrationBridge === 'object' ? stored.integrationBridge : null;
+  return integrationBridgeConfig ? structuredClone(integrationBridgeConfig) : null;
+}
+
+export async function saveIntegrationBridgeConfig(config) {
+  const stored = await readEncryptedSettings();
+  for (const [provider, credential] of Object.entries(stored.providers || {})) {
+    if (!savedCredentials.has(provider) && credential?.apiKey && credential?.baseUrl) savedCredentials.set(provider, credential);
+  }
+  for (const [profileId, credential] of Object.entries(stored.hermesProfiles || {})) {
+    if (!hermesProfileCredentials.has(profileId) && credential?.apiKey) hermesProfileCredentials.set(profileId, credential);
+  }
+  const workerUrl = new URL(String(config?.workerUrl || ''));
+  if (workerUrl.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(workerUrl.hostname)) throw new Error('Worker URL must use HTTPS.');
+  const token = String(config?.token || '');
+  if (token.length < 32 || token.length > 256) throw new Error('Bridge token must be 32-256 characters.');
+  if (!config?.agents || typeof config.agents !== 'object' || Array.isArray(config.agents)) throw new Error('Agent routes are required.');
+  const agents = {};
+  for (const [id, route] of Object.entries(config.agents)) {
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(id) || !['Hermes', 'Grok', 'Claude', 'OpenAI', 'ClaudeOAuth', 'CodexOAuth'].includes(route?.provider)) throw new Error(`Invalid route for Agent ${id}.`);
+    if (['ClaudeOAuth', 'CodexOAuth'].includes(route.provider) && route.model) throw new Error(`CLI route ${id} does not accept a model override.`);
+    agents[id.toLowerCase()] = {
+      provider: route.provider,
+      model: String(route.model || '').slice(0, 120),
+      systemPrompt: String(route.systemPrompt || '').slice(0, 4000),
+      ...(route.provider === 'Hermes' && route.hermesProfileId ? {hermesProfileId: String(route.hermesProfileId)} : {}),
+    };
+  }
+  const previous = integrationBridgeConfig;
+  integrationBridgeConfig = {workerUrl: workerUrl.origin, token, agents};
+  try { await writeEncryptedSettings(); }
+  catch (error) { integrationBridgeConfig = previous; throw error; }
+  return {workerUrl: workerUrl.origin, agents: Object.keys(agents)};
 }

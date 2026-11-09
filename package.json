@@ -6,6 +6,11 @@
   "scripts": {
     "dev": "vite",
     "dev:local": "sh scripts/dev-local.sh",
+    "worker:dev": "wrangler dev --config integration-worker/wrangler.toml",
+    "worker:deploy": "wrangler deploy --config integration-worker/wrangler.toml",
+    "bridge": "node integration-worker/bridge.mjs",
+    "bridge:configure": "node scripts/configure-bridge.mjs",
+    "test:integrations": "node --test integration-worker/*.test.mjs",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs"
@@ -16,5 +21,13 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "vite": "6.4.2"
+  },
+  "devDependencies": {
+    "wrangler": "^4.158.0"
+  },
+  "allowScripts": {
+    "workerd@1.20261104.1": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.25.12": true
   }
 }

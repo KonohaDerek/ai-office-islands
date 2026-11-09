@@ -6,6 +6,8 @@ settings.yaml.*.tmp
 .env
 .env.*
 !.env.example
+.dev.vars
+.wrangler/
 node_modules/
 dist/
 .cache/
