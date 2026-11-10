@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {ArrowClockwise, CaretLeft, CaretRight, X} from '@phosphor-icons/react';
-import {AGENT_LABELS, agentSummaryLabel, countLabel, focusTrapTarget, formatObservedTime, freshness, overviewErrorKind, sourceErrorLabel, statusMeta, summarizeProjects, unattributedEndedNote} from './project-overview-utils.mjs';
+import {AGENT_LABELS, agentSummaryLabel, endedLabel, focusTrapTarget, formatObservedTime, freshness, omittedProjects, overviewErrorKind, sourceErrorLabel, statusMeta, subAgentsLabel, summarizeProjects, truncationNotes, unattributedEndedNote} from './project-overview-utils.mjs';
 
 const ERROR_COPY = {
   offline: '裝置目前離線，無法讀取專案狀態。',
@@ -98,6 +98,8 @@ export default function ProjectOverview({open, onClose, publicDemo}) {
   const summary = summarizeProjects(projects);
   const fresh = snapshot ? freshness(snapshot.observedAt, now, snapshot.staleAfterMs) : 'unknown';
   const sources = Object.entries(snapshot?.sources || {});
+  const partialNotes = truncationNotes(snapshot);
+  const omitted = omittedProjects(snapshot);
 
   return <div className="overview-shade" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="project-overview" role="dialog" aria-modal="true" aria-labelledby="overview-title" tabIndex={-1} ref={panelRef}>
@@ -124,6 +126,10 @@ export default function ProjectOverview({open, onClose, publicDemo}) {
           <button type="button" onClick={() => load(true)} disabled={loading}>重試</button>
         </div>}
 
+        {partialNotes.length > 0 && <div className="overview-alert overview-partial" role="status">
+          <span><strong>資料不完整</strong>{partialNotes.map(note => <small key={note}>{note}</small>)}</span>
+        </div>}
+
         {sources.length > 0 && <ul className="overview-sources" aria-label="資料來源">
           {sources.map(([key, source]) => <li key={key} className={`source-${source.state === 'ok' ? 'ok' : 'error'}`}>
             <code>{key === 'herdr' ? 'herdr-app ls' : 'hc ls --all'}</code>
@@ -139,17 +145,18 @@ export default function ProjectOverview({open, onClose, publicDemo}) {
           <dl className="overview-facts">
             {project.unidentified > 0 && <div><dt>身分未知終端</dt><dd>{project.unidentified}（無法確認是否為代理）</dd></div>}
             <div><dt>代理終端</dt><dd>{project.agents}{Object.entries(project.agentsByKind || {}).length ? ` · ${Object.entries(project.agentsByKind).map(([kind, count]) => `${AGENT_LABELS[kind] || kind} ${count}`).join('、')}` : ''}</dd></div>
-            <div><dt>子代理</dt><dd>{project.subAgents}</dd></div>
+            <div><dt>子代理</dt><dd>{subAgentsLabel(project)}</dd></div>
             <div><dt>分頁</dt><dd>{project.tabs}</dd></div>
             <div><dt>一般終端</dt><dd>{project.shells}</dd></div>
-            <div><dt>已結束終端</dt><dd>{countLabel(project.ended)}</dd></div>
+            <div><dt>已結束終端</dt><dd>{endedLabel(project)}</dd></div>
             <div><dt>最後工作更新</dt><dd>未知（來源未提供）</dd></div>
           </dl>
           <p className="overview-note">代理回合結束不代表產品完成。此總覽不包含 PR、建置、部署或驗收資訊，也不讀取終端內容。</p>
         </div> : <>
-          {snapshot?.available && <div className="overview-summary">
-            {SUMMARY_KEYS.map(key => <span key={key} className={`tone-${statusMeta(key).tone}`}><b>{summary[key]}</b>{statusMeta(key).label}</span>)}
+          {snapshot?.available && <div className="overview-summary" aria-label={omitted ? `部分統計：另有 ${omitted} 個專案未納入` : undefined}>
+            {SUMMARY_KEYS.map(key => <span key={key} className={`tone-${statusMeta(key).tone}`}><b>{summary[key]}{omitted ? '+' : ''}</b>{statusMeta(key).label}</span>)}
           </div>}
+          {omitted > 0 && <p className="overview-note">以上統計只含前 {projects.length} 個專案；另有 {omitted} 個專案狀態未知，各數字可能更高。</p>}
           {snapshot && !snapshot.available && <div className="overview-empty"><strong>專案清單未知</strong><small>無法從 Herdr 讀取已登錄專案；不代表沒有專案或專案已完成。</small></div>}
           {snapshot?.available && projects.length === 0 && <div className="overview-empty"><strong>沒有已登錄專案</strong><small>Herdr 目前沒有回報任何專案空間。</small></div>}
           {!snapshot && loading && <div className="overview-empty"><strong>讀取中…</strong></div>}

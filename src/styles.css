@@ -191,3 +191,4 @@
 .overview-note,.overview-footnote{margin:0;font-size:10px;line-height:1.5;color:#8b9893}.overview-footnote{margin-top:auto;padding-top:6px}
 @media(max-width:640px){.overview-shade{background:#fffefb}.project-overview{width:100%;border-left:0;box-shadow:none;padding:14px 16px 18px}.project-overview-trigger{width:31px;height:31px}.overview-summary span,.overview-counts div{padding:7px 2px}}
 @media(max-width:480px){.office-switch{max-width:136px}.connect-source{white-space:nowrap}}
+.overview-partial{border-color:#efdcae;background:#fdf6e7;color:#8a6420}.overview-partial span{display:flex;flex-direction:column;gap:3px}.overview-partial small{font-size:10px;line-height:1.45}
