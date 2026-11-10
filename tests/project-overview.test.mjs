@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  ALLOWED_COMMANDS, COMMAND_MAX_BYTES, COMMAND_TIMEOUT_MS, STALE_AFTER_MS,
+  ALLOWED_COMMANDS, COMMAND_MAX_BYTES, COMMAND_TIMEOUT_MS, MAX_PROJECTS, MAX_SUB_AGENTS_PER_TERMINAL, MAX_TERMINALS, STALE_AFTER_MS,
   classifyExecError, createOverviewHandler, createSnapshotStore, normalizeSnapshot,
   overviewDisabled, rejectRequest, runAllowlistedCommand, sanitizeLabel,
 } from '../server/project-overview.mjs';
-import {agentSummaryLabel, countLabel, focusTrapTarget, formatObservedTime, freshness, overviewErrorKind, summarizeProjects, unattributedEndedNote} from '../src/project-overview-utils.mjs';
+import {agentSummaryLabel, countLabel, endedLabel, focusTrapTarget, formatObservedTime, freshness, omittedProjects, overviewErrorKind, subAgentsLabel, summarizeProjects, truncationNotes, unattributedEndedNote} from '../src/project-overview-utils.mjs';
 
 const observedAt = '2026-11-10T08:00:00.000Z';
 const term = (terminal, app, status, extra = {}) => ({terminal, pane: 'p1', status, app, name: {}, sub_agents: [], ...extra});
@@ -347,4 +347,118 @@ test('runs only fixed allowlisted argv through execFile without a shell', async 
   assert.deepEqual(await runAllowlistedCommand('hc', failing), {ok: false, error: 'timeout'});
   assert.equal(classifyExecError({code: 'ENOENT'}), 'not_found');
   assert.equal(classifyExecError({code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'}), 'output_too_large');
+});
+
+// Truncation boundaries: caps stay, but anything past them is reported, never silent.
+const spacesOf = (count, lastStatus = 'working') => Array.from({length: count}, (_, i) => ({
+  id: `sp${i}`, name: `P${i}`, tabs: [{terminals: [term(`t${i}`, 'codex', i === count - 1 ? lastStatus : 'working')]}],
+}));
+const finishedOf = count => Array.from({length: count}, (_, i) => ({address: `f${i}`, agent: 'zsh', state: 'finished', where: 'P0 / tab'}));
+
+test('caps are the documented safety bounds', () => {
+  assert.equal(MAX_PROJECTS, 100);
+  assert.equal(MAX_TERMINALS, 500);
+  assert.equal(MAX_SUB_AGENTS_PER_TERMINAL, 50);
+});
+
+test('exactly 100 projects is complete; 101 reports the omitted project as unknown', () => {
+  const full = normalizeSnapshot({herdr: herdr(spacesOf(100, 'blocked')), hc: hc([])}, observedAt);
+  assert.equal(full.projects.length, 100);
+  assert.equal(full.partial, false);
+  assert.equal(full.truncation.projects, null);
+  assert.equal(full.projects[0].status, 'blocked');
+  assert.deepEqual(truncationNotes(full), []);
+  assert.equal(omittedProjects(full), 0);
+
+  const over = normalizeSnapshot({herdr: herdr(spacesOf(101, 'blocked')), hc: hc([])}, observedAt);
+  assert.equal(over.projects.length, 100);
+  assert.ok(!over.projects.some(p => p.status === 'blocked'), 'the 101st (blocked) project is past the cap');
+  assert.equal(over.partial, true);
+  assert.deepEqual(over.truncation.projects, {limit: 100, total: 101, omitted: 1});
+  assert.equal(omittedProjects(over), 1);
+  const [note] = truncationNotes(over);
+  assert.match(note, /101/);
+  assert.match(note, /另有 1 個未納入，狀態未知/);
+});
+
+test('invalid spaces do not count toward the project cap or the omitted total', () => {
+  const snapshot = normalizeSnapshot({herdr: herdr([null, 'x', [], [{id: 'arr'}], ...spacesOf(100)]), hc: hc([])}, observedAt);
+  assert.equal(snapshot.projects.length, 100);
+  assert.equal(snapshot.truncation.projects, null);
+  assert.equal(snapshot.partial, false);
+});
+
+test('exactly 500 hc terminals is complete; 501 marks ended totals as a lower bound', () => {
+  const full = normalizeSnapshot({herdr: herdr(spacesOf(1)), hc: hc(finishedOf(500))}, observedAt);
+  assert.equal(full.projects[0].ended, 500);
+  assert.equal(full.projects[0].endedPartial, false);
+  assert.equal(full.truncation.terminals, null);
+  assert.equal(full.partial, false);
+  assert.equal(endedLabel(full.projects[0]), '500');
+
+  const over = normalizeSnapshot({herdr: herdr(spacesOf(1)), hc: hc(finishedOf(501))}, observedAt);
+  assert.equal(over.projects[0].ended, 500);
+  assert.equal(over.projects[0].endedPartial, true);
+  assert.equal(over.unattributedEndedPartial, true);
+  assert.equal(over.partial, true);
+  assert.deepEqual(over.truncation.terminals, {limit: 500, total: 501, omitted: 1});
+  assert.match(endedLabel(over.projects[0]), /^至少 500（.*不完整）$/);
+  assert.equal(unattributedEndedNote(over), 'hc 清單已截斷：可能還有未計入的已結束終端。');
+  const unattributed = normalizeSnapshot({herdr: herdr(spacesOf(1)), hc: hc(finishedOf(501).map(t => ({...t, where: 'Nowhere / tab'})))}, observedAt);
+  assert.match(unattributedEndedNote(unattributed), /^至少另有 500 個.*不完整/);
+  assert.ok(truncationNotes(over).some(note => /501/.test(note) && /下限/.test(note)));
+});
+
+test('a live terminal past the hc cap without Herdr app/status is unknown, and the warning says so', () => {
+  const spaces = [{id: 'sp1', name: 'One', tabs: [{terminals: [term('live', null, null)]}]}];
+  const live = {address: 'live', agent: 'claude', state: 'live', status: 'blocked', where: 'One / tab'};
+  const within = normalizeSnapshot({herdr: herdr(spaces), hc: hc([...finishedOf(499), live])}, observedAt);
+  assert.equal(within.projects[0].status, 'blocked');
+  assert.equal(within.projects[0].agents, 1);
+  const past = normalizeSnapshot({herdr: herdr(spaces), hc: hc([...finishedOf(500), live])}, observedAt);
+  const [project] = past.projects;
+  assert.equal(project.status, 'unknown');
+  assert.equal(project.agents, 0);
+  assert.equal(project.unidentified, 1);
+  assert.equal(project.counts.blocked, 0);
+  assert.deepEqual(past.truncation.terminals, {limit: 500, total: 501, omitted: 1});
+  assert.ok(truncationNotes(past).some(note => /下限/.test(note) && /身分與狀態會顯示為未知/.test(note)));
+});
+
+test('hc failure keeps ended unknown and does not claim terminal truncation', () => {
+  const snapshot = normalizeSnapshot({herdr: herdr(spacesOf(1)), hc: {ok: false, error: 'timeout'}}, observedAt);
+  assert.equal(snapshot.projects[0].ended, null);
+  assert.equal(snapshot.projects[0].endedPartial, false);
+  assert.equal(snapshot.truncation.terminals, null);
+  assert.equal(endedLabel(snapshot.projects[0]), '未知（hc 無法讀取）');
+});
+
+test('a finished terminal named after an omitted project stays unattributed', () => {
+  const spaces = spacesOf(101);
+  spaces[100].name = 'P0';
+  const snapshot = normalizeSnapshot({herdr: herdr(spaces), hc: hc(finishedOf(1))}, observedAt);
+  assert.equal(snapshot.projects.find(p => p.id === 'sp0').ended, 0);
+  assert.equal(snapshot.unattributedEnded, 1);
+});
+
+test('sub-agent counts over the per-terminal cap are reported as a lower bound', () => {
+  const ids = n => Array.from({length: n}, (_, i) => `s${i}`);
+  const at = n => normalizeSnapshot({herdr: herdr([{id: 'sp1', name: 'One', tabs: [{terminals: [term('t1', 'codex', 'working', {sub_agents: ids(n)})]}]}]), hc: hc([])}, observedAt);
+  const full = at(50);
+  assert.equal(full.projects[0].subAgents, 50);
+  assert.equal(full.projects[0].subAgentsPartial, false);
+  assert.equal(full.partial, false);
+  assert.equal(subAgentsLabel(full.projects[0]), '50');
+  const over = at(51);
+  assert.equal(over.projects[0].subAgents, 50);
+  assert.equal(over.projects[0].subAgentsPartial, true);
+  assert.equal(over.partial, true);
+  assert.deepEqual(over.truncation.subAgents, {limitPerTerminal: 50});
+  assert.match(subAgentsLabel(over.projects[0]), /^至少 50/);
+});
+
+test('a source failure does not report truncation for data it never read', () => {
+  const snapshot = normalizeSnapshot({herdr: {ok: false, error: 'timeout'}, hc: hc(finishedOf(10))}, observedAt);
+  assert.equal(snapshot.partial, false);
+  assert.equal(snapshot.truncation.projects, null);
 });

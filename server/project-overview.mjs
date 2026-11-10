@@ -11,8 +11,9 @@ export const MIN_REFRESH_INTERVAL_MS = 2_000;
 export const STALE_AFTER_MS = 60_000;
 export const COMMAND_TIMEOUT_MS = 4_000;
 export const COMMAND_MAX_BYTES = 1024 * 1024;
-const MAX_PROJECTS = 100;
-const MAX_TERMINALS = 500;
+export const MAX_PROJECTS = 100;
+export const MAX_TERMINALS = 500;
+export const MAX_SUB_AGENTS_PER_TERMINAL = 50;
 
 // The only commands this adapter may run. `--json` is the machine-readable
 // form of `hc ls --all`; nothing from a request ever reaches argv.
@@ -101,17 +102,22 @@ export function normalizeSnapshot(results, observedAt = new Date().toISOString()
 
   const hcOk = sources.hc.state === 'ok';
   const hcByAddress = new Map();
+  // Both lists are capped for safety; anything past a cap is reported, never silently dropped.
+  const terminalsOmitted = Math.max(0, (hcTerminals?.length || 0) - MAX_TERMINALS);
   for (const terminal of (hcTerminals || []).slice(0, MAX_TERMINALS)) {
     if (terminal && typeof terminal.address === 'string') hcByAddress.set(terminal.address, terminal);
   }
 
   const seenAddresses = new Set();
   const usedIds = new Set();
-  const spaces = (herdrSpaces || []).slice(0, MAX_PROJECTS).filter(space => space && typeof space === 'object');
+  const validSpaces = (herdrSpaces || []).filter(space => space && typeof space === 'object' && !Array.isArray(space));
+  const spaces = validSpaces.slice(0, MAX_PROJECTS);
+  const projectsOmitted = validSpaces.length - spaces.length;
+  let subAgentsCapped = false;
   const projects = spaces.map(space => {
     const counts = emptyCounts();
     const agentsByKind = {};
-    let agents = 0, unidentified = 0, shells = 0, subAgents = 0, tabs = 0;
+    let agents = 0, unidentified = 0, shells = 0, subAgents = 0, subAgentsPartial = false, tabs = 0;
     for (const tab of Array.isArray(space.tabs) ? space.tabs : []) {
       tabs += 1;
       for (const terminal of Array.isArray(tab?.terminals) ? tab.terminals : []) {
@@ -126,7 +132,10 @@ export function normalizeSnapshot(results, observedAt = new Date().toISOString()
         agentsByKind[kind] = (agentsByKind[kind] || 0) + 1;
         const status = terminalStatus(terminal?.status ?? hc?.status);
         counts[status] += 1;
-        if (Array.isArray(terminal?.sub_agents)) subAgents += Math.min(terminal.sub_agents.length, 50);
+        if (Array.isArray(terminal?.sub_agents)) {
+          subAgents += Math.min(terminal.sub_agents.length, MAX_SUB_AGENTS_PER_TERMINAL);
+          if (terminal.sub_agents.length > MAX_SUB_AGENTS_PER_TERMINAL) subAgentsPartial = true;
+        }
       }
     }
     return {
@@ -139,18 +148,23 @@ export function normalizeSnapshot(results, observedAt = new Date().toISOString()
       agentsByKind,
       shells,
       subAgents,
+      subAgentsPartial,
       tabs,
       ended: hcOk ? 0 : null,
+      endedPartial: hcOk && terminalsOmitted > 0,
       updatedAt: null,
       timeBasis: 'observed',
     };
   });
 
+  for (const project of projects) if (project.subAgentsPartial) subAgentsCapped = true;
+
   // Finished terminals are only in hc; attribute them by exact, unique space name.
+  // Names of omitted spaces still count toward uniqueness so a shared name stays ambiguous.
   const byName = new Map();
-  for (const [index, space] of spaces.entries()) {
-    if (typeof space?.name !== 'string') continue;
-    byName.set(space.name, byName.has(space.name) ? null : projects[index]);
+  for (const [index, space] of validSpaces.entries()) {
+    if (typeof space.name !== 'string') continue;
+    byName.set(space.name, byName.has(space.name) || index >= spaces.length ? null : projects[index]);
   }
   let unattributedEnded = hcOk ? 0 : null;
   for (const terminal of hcByAddress.values()) {
@@ -172,6 +186,13 @@ export function normalizeSnapshot(results, observedAt = new Date().toISOString()
     sources,
     projects: available ? projects : [],
     unattributedEnded,
+    unattributedEndedPartial: hcOk && terminalsOmitted > 0,
+    partial: (available && projectsOmitted > 0) || (hcOk && terminalsOmitted > 0) || (available && subAgentsCapped),
+    truncation: {
+      projects: available && projectsOmitted > 0 ? {limit: MAX_PROJECTS, total: validSpaces.length, omitted: projectsOmitted} : null,
+      terminals: hcOk && terminalsOmitted > 0 ? {limit: MAX_TERMINALS, total: hcTerminals.length, omitted: terminalsOmitted} : null,
+      subAgents: available && subAgentsCapped ? {limitPerTerminal: MAX_SUB_AGENTS_PER_TERMINAL} : null,
+    },
   };
 }
 

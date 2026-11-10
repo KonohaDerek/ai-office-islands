@@ -61,6 +61,32 @@ export function countLabel(value) {
   return value === null || value === undefined ? '未知（hc 無法讀取）' : String(value);
 }
 
+// Ended terminals: unknown when hc failed, a lower bound when hc's list hit its cap.
+export function endedLabel(project = {}) {
+  if (project.ended === null || project.ended === undefined) return countLabel(project.ended);
+  return project.endedPartial ? `至少 ${project.ended}（hc 清單已截斷，總數不完整）` : String(project.ended);
+}
+
+export function subAgentsLabel(project = {}) {
+  const count = project.subAgents || 0;
+  return project.subAgentsPartial ? `至少 ${count}（部分終端子代理超過上限，已截斷）` : String(count);
+}
+
+// Prominent warnings for any capped list; empty when the snapshot is complete.
+export function truncationNotes(snapshot) {
+  const truncation = snapshot?.truncation || {};
+  const notes = [];
+  if (truncation.projects) notes.push(`Herdr 回報 ${truncation.projects.total} 個專案，只顯示前 ${truncation.projects.limit} 個；另有 ${truncation.projects.omitted} 個未納入，狀態未知，可能包含受阻專案。`);
+  if (truncation.terminals) notes.push(`hc 回報 ${truncation.terminals.total} 個終端，只讀取前 ${truncation.terminals.limit} 個；已結束終端數只是下限，不是完整總數；超出範圍且 Herdr 未提供代理類型或狀態的終端，身分與狀態會顯示為未知。`);
+  if (truncation.subAgents) notes.push(`部分終端的子代理超過 ${truncation.subAgents.limitPerTerminal} 個，子代理數只是下限。`);
+  return notes;
+}
+
+// Number of projects the summary cannot account for (status unknown), or 0.
+export function omittedProjects(snapshot) {
+  return snapshot?.truncation?.projects?.omitted || 0;
+}
+
 export function agentSummaryLabel(project = {}) {
   const agents = project.agents || 0, unidentified = project.unidentified || 0;
   if (!agents) return unidentified ? '代理身分未知' : '沒有代理終端';
@@ -71,6 +97,9 @@ export function unattributedEndedNote(snapshot) {
   if (!snapshot?.available) return '';
   const count = snapshot.unattributedEnded;
   if (count === null || count === undefined) return '已結束終端數未知：hc 無法讀取，無法判斷各專案已結束的終端。';
+  if (snapshot.unattributedEndedPartial) return count > 0
+    ? `至少另有 ${count} 個已結束終端無法對應到單一專案（hc 清單已截斷，總數不完整）。`
+    : 'hc 清單已截斷：可能還有未計入的已結束終端。';
   return count > 0 ? `另有 ${count} 個已結束終端無法對應到單一專案。` : '';
 }
 
