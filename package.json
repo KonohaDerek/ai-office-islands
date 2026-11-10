@@ -13,7 +13,8 @@
     "test:integrations": "node --test integration-worker/*.test.mjs",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
-    "test:sites": "node --test tests/sites-worker.test.mjs"
+    "test:sites": "node --test tests/sites-worker.test.mjs",
+    "test:overview": "node --test tests/project-overview.test.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",

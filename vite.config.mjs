@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { integrationsPlugin, loadEnvironmentConnections } from "./server/integrations.mjs";
+import { projectOverviewPlugin } from "./server/project-overview.mjs";
 
 await loadEnvironmentConnections();
 
@@ -19,5 +20,5 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [react(), integrationsPlugin()],
+  plugins: [react(), integrationsPlugin(), projectOverviewPlugin()],
 });
