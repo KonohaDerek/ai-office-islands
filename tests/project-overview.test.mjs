@@ -382,7 +382,7 @@ test('exactly 100 projects is complete; 101 reports the omitted project as unkno
 });
 
 test('invalid spaces do not count toward the project cap or the omitted total', () => {
-  const snapshot = normalizeSnapshot({herdr: herdr([null, 'x', ...spacesOf(100)]), hc: hc([])}, observedAt);
+  const snapshot = normalizeSnapshot({herdr: herdr([null, 'x', [], [{id: 'arr'}], ...spacesOf(100)]), hc: hc([])}, observedAt);
   assert.equal(snapshot.projects.length, 100);
   assert.equal(snapshot.truncation.projects, null);
   assert.equal(snapshot.partial, false);
@@ -407,6 +407,22 @@ test('exactly 500 hc terminals is complete; 501 marks ended totals as a lower bo
   const unattributed = normalizeSnapshot({herdr: herdr(spacesOf(1)), hc: hc(finishedOf(501).map(t => ({...t, where: 'Nowhere / tab'})))}, observedAt);
   assert.match(unattributedEndedNote(unattributed), /^至少另有 500 個.*不完整/);
   assert.ok(truncationNotes(over).some(note => /501/.test(note) && /下限/.test(note)));
+});
+
+test('a live terminal past the hc cap without Herdr app/status is unknown, and the warning says so', () => {
+  const spaces = [{id: 'sp1', name: 'One', tabs: [{terminals: [term('live', null, null)]}]}];
+  const live = {address: 'live', agent: 'claude', state: 'live', status: 'blocked', where: 'One / tab'};
+  const within = normalizeSnapshot({herdr: herdr(spaces), hc: hc([...finishedOf(499), live])}, observedAt);
+  assert.equal(within.projects[0].status, 'blocked');
+  assert.equal(within.projects[0].agents, 1);
+  const past = normalizeSnapshot({herdr: herdr(spaces), hc: hc([...finishedOf(500), live])}, observedAt);
+  const [project] = past.projects;
+  assert.equal(project.status, 'unknown');
+  assert.equal(project.agents, 0);
+  assert.equal(project.unidentified, 1);
+  assert.equal(project.counts.blocked, 0);
+  assert.deepEqual(past.truncation.terminals, {limit: 500, total: 501, omitted: 1});
+  assert.ok(truncationNotes(past).some(note => /下限/.test(note) && /身分與狀態會顯示為未知/.test(note)));
 });
 
 test('hc failure keeps ended unknown and does not claim terminal truncation', () => {

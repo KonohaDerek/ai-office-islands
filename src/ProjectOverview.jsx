@@ -153,7 +153,7 @@ export default function ProjectOverview({open, onClose, publicDemo}) {
           </dl>
           <p className="overview-note">代理回合結束不代表產品完成。此總覽不包含 PR、建置、部署或驗收資訊，也不讀取終端內容。</p>
         </div> : <>
-          {snapshot?.available && <div className="overview-summary" aria-label={omitted ? `部分統計：另有 ${omitted} 個專案未納入` : undefined}>
+          {snapshot?.available && <div className="overview-summary" role="group" aria-label={omitted ? `部分統計：另有 ${omitted} 個專案未納入` : undefined}>
             {SUMMARY_KEYS.map(key => <span key={key} className={`tone-${statusMeta(key).tone}`}><b>{summary[key]}{omitted ? '+' : ''}</b>{statusMeta(key).label}</span>)}
           </div>}
           {omitted > 0 && <p className="overview-note">以上統計只含前 {projects.length} 個專案；另有 {omitted} 個專案狀態未知，各數字可能更高。</p>}

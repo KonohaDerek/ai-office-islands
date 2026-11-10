@@ -27,13 +27,24 @@ All three safety bounds stay unchanged. Nothing past a bound is processed; it is
 - UI (`src/ProjectOverview.jsx`, `src/styles.css`): an amber “資料不完整” banner lists each truncation; summary counts get a `+` suffix and a note that omitted projects have unknown status; detail view shows “至少 N” for ended and sub-agent counts.
 - Tests (`tests/project-overview.test.mjs`): 100/101 projects, 500/501 hc terminals, 50/51 sub-agents, invalid-space cap accounting, omitted-name attribution, hc failure, Herdr failure.
 
+## Review round 1 (`f90c44e`)
+
+Two independent reviewers (Codex and Claude) reported the same findings. All are fixed:
+
+| Finding | Disposition |
+|---------|-------------|
+| P3: array entries in `spaces` passed the object check and used up project cap slots as fake projects. | `validSpaces` now excludes `Array.isArray`. The fixture adds `[]` and `[{id}]` before 100 real spaces and expects 100 projects with no truncation. |
+| P3: the hc truncation warning only covered ended totals. Live terminals past the cap get no hc identity or status fallback. | The warning now also says that terminals past the cap, if Herdr gives no agent type or status, show unknown identity and status. The fixture uses 500 finished terminals plus a live, blocked `claude` terminal at position 501, with Herdr app/status missing. Expected result: the project is `unknown` with 1 unidentified terminal and no blocked count. At position 500 (within the cap) the same terminal resolves to blocked. |
+| Accessibility: `aria-label` on a plain `div` summary is not reliably announced. | Added `role="group"`. |
+
 ## Verification
 
-- `node --test tests/project-overview.test.mjs`: 31 tests, 31 pass.
-- `node --test tests/sites-worker.test.mjs`: 3 pass, 1 fail with `ENOENT dist/client/index.html`; this fixture needs `npm run build`, which was out of scope. Not caused by this change.
+- Round 0 (`f90c44e`): `project-overview` 31/31 pass. `sites-worker` 3/4 pass; 1 fails with `ENOENT dist/client/index.html` because there was no build.
+- Round 1: `node --test tests/project-overview.test.mjs` 32/32 pass. `node --test tests/sites-worker.test.mjs` 4/4 pass against the `dist/` the coordinator built from `f90c44e`, not from this round's commit. A syntax-only esbuild JSX transform of `src/ProjectOverview.jsx` succeeds.
+- The coordinator built `f90c44e` with `env -i`, a nonexistent `AI_OFFICE_SETTINGS_PATH`, and an ignored `node_modules` symlink to existing installed deps. Nothing was installed. That build evidence applies to `f90c44e` only.
 
 ## Limitations
 
 - Which projects are kept is still source order, not priority: an omitted project may be blocked. The UI says so instead of reordering, because ranking needs every space processed, which the cap exists to avoid.
-- No build, browser, live Herdr/hc run, or JSX compile was performed (no `node_modules` installed). The UI change is unverified visually.
+- This round ran no build, browser, live Herdr/hc, network, integration or settings step. The UI change has not been checked visually, and `dist/` does not reflect the round-1 commit.
 - Rollback: revert the commit; the snapshot change is additive (new fields only), so older clients ignore them.

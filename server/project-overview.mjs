@@ -110,7 +110,7 @@ export function normalizeSnapshot(results, observedAt = new Date().toISOString()
 
   const seenAddresses = new Set();
   const usedIds = new Set();
-  const validSpaces = (herdrSpaces || []).filter(space => space && typeof space === 'object');
+  const validSpaces = (herdrSpaces || []).filter(space => space && typeof space === 'object' && !Array.isArray(space));
   const spaces = validSpaces.slice(0, MAX_PROJECTS);
   const projectsOmitted = validSpaces.length - spaces.length;
   let subAgentsCapped = false;

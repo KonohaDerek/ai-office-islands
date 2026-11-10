@@ -77,7 +77,7 @@ export function truncationNotes(snapshot) {
   const truncation = snapshot?.truncation || {};
   const notes = [];
   if (truncation.projects) notes.push(`Herdr 回報 ${truncation.projects.total} 個專案，只顯示前 ${truncation.projects.limit} 個；另有 ${truncation.projects.omitted} 個未納入，狀態未知，可能包含受阻專案。`);
-  if (truncation.terminals) notes.push(`hc 回報 ${truncation.terminals.total} 個終端，只讀取前 ${truncation.terminals.limit} 個；已結束終端數只是下限，不是完整總數。`);
+  if (truncation.terminals) notes.push(`hc 回報 ${truncation.terminals.total} 個終端，只讀取前 ${truncation.terminals.limit} 個；已結束終端數只是下限，不是完整總數；超出範圍且 Herdr 未提供代理類型或狀態的終端，身分與狀態會顯示為未知。`);
   if (truncation.subAgents) notes.push(`部分終端的子代理超過 ${truncation.subAgents.limitPerTerminal} 個，子代理數只是下限。`);
   return notes;
 }
