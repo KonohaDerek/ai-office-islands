@@ -41,6 +41,14 @@ export function sanitizeLabel(value, fallback = '未命名專案') {
   return [...text].slice(0, 60).join('');
 }
 
+// Distinct spaces may share an ID; suffix later ones in source order so output IDs stay unique.
+function uniqueId(id, used) {
+  let candidate = id;
+  for (let n = 2; used.has(candidate); n += 1) candidate = `${id}~${n}`;
+  used.add(candidate);
+  return candidate;
+}
+
 export function safeProjectId(value) {
   if (typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value)) return value;
   return 'p_' + createHash('sha256').update(String(value ?? '')).digest('hex').slice(0, 16);
@@ -91,23 +99,28 @@ export function normalizeSnapshot(results, observedAt = new Date().toISOString()
   const hcTerminals = Array.isArray(hcData?.terminals) ? hcData.terminals : null;
   sources.hc = sourceState(results?.hc, hcTerminals, observedAt);
 
+  const hcOk = sources.hc.state === 'ok';
   const hcByAddress = new Map();
   for (const terminal of (hcTerminals || []).slice(0, MAX_TERMINALS)) {
     if (terminal && typeof terminal.address === 'string') hcByAddress.set(terminal.address, terminal);
   }
 
   const seenAddresses = new Set();
-  const projects = (herdrSpaces || []).slice(0, MAX_PROJECTS).filter(space => space && typeof space === 'object').map(space => {
+  const usedIds = new Set();
+  const spaces = (herdrSpaces || []).slice(0, MAX_PROJECTS).filter(space => space && typeof space === 'object');
+  const projects = spaces.map(space => {
     const counts = emptyCounts();
     const agentsByKind = {};
-    let agents = 0, shells = 0, subAgents = 0, tabs = 0;
+    let agents = 0, unidentified = 0, shells = 0, subAgents = 0, tabs = 0;
     for (const tab of Array.isArray(space.tabs) ? space.tabs : []) {
       tabs += 1;
       for (const terminal of Array.isArray(tab?.terminals) ? tab.terminals : []) {
         const address = typeof terminal?.terminal === 'string' ? terminal.terminal : '';
         if (address) seenAddresses.add(address);
         const hc = address ? hcByAddress.get(address) : null;
-        const kind = agentKind(terminal?.app ?? hc?.agent);
+        const kind = agentKind(terminal?.app || hc?.agent);
+        // No app from Herdr and nothing from hc to vouch for it: identity is unknown, not a shell.
+        if (!kind) { unidentified += 1; counts.unknown += 1; continue; }
         if (!AGENT_KINDS.has(kind)) { shells += 1; continue; }
         agents += 1;
         agentsByKind[kind] = (agentsByKind[kind] || 0) + 1;
@@ -117,16 +130,17 @@ export function normalizeSnapshot(results, observedAt = new Date().toISOString()
       }
     }
     return {
-      id: safeProjectId(space.id),
+      id: uniqueId(safeProjectId(space.id), usedIds),
       name: sanitizeLabel(space.name),
-      status: rollupStatus(counts, agents),
+      status: rollupStatus(counts, agents + unidentified),
       counts,
       agents,
+      unidentified,
       agentsByKind,
       shells,
       subAgents,
       tabs,
-      ended: 0,
+      ended: hcOk ? 0 : null,
       updatedAt: null,
       timeBasis: 'observed',
     };
@@ -134,11 +148,11 @@ export function normalizeSnapshot(results, observedAt = new Date().toISOString()
 
   // Finished terminals are only in hc; attribute them by exact, unique space name.
   const byName = new Map();
-  for (const [index, space] of (herdrSpaces || []).slice(0, MAX_PROJECTS).entries()) {
+  for (const [index, space] of spaces.entries()) {
     if (typeof space?.name !== 'string') continue;
     byName.set(space.name, byName.has(space.name) ? null : projects[index]);
   }
-  let unattributedEnded = 0;
+  let unattributedEnded = hcOk ? 0 : null;
   for (const terminal of hcByAddress.values()) {
     if (terminal.state !== 'finished' || seenAddresses.has(terminal.address)) continue;
     const spaceName = typeof terminal.where === 'string' ? terminal.where.split(' / ')[0] : '';

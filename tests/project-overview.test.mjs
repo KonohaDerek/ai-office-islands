@@ -5,7 +5,7 @@ import {
   classifyExecError, createOverviewHandler, createSnapshotStore, normalizeSnapshot,
   overviewDisabled, rejectRequest, runAllowlistedCommand, sanitizeLabel,
 } from '../server/project-overview.mjs';
-import {freshness, overviewErrorKind, summarizeProjects} from '../src/project-overview-utils.mjs';
+import {agentSummaryLabel, countLabel, focusTrapTarget, formatObservedTime, freshness, overviewErrorKind, summarizeProjects, unattributedEndedNote} from '../src/project-overview-utils.mjs';
 
 const observedAt = '2026-11-10T08:00:00.000Z';
 const term = (terminal, app, status, extra = {}) => ({terminal, pane: 'p1', status, app, name: {}, sub_agents: [], ...extra});
@@ -23,6 +23,7 @@ function sample() {
     ]),
     hc: hc([
       {address: 't1', agent: 'codex', cwd: '/Users/someone/alpha', state: 'live', status: 'working', name: 'secret task text', where: 'Alpha / tab'},
+      {address: 't2', agent: 'zsh', cwd: '/x', state: 'live', where: 'Alpha / tab'},
       {address: 't6', agent: 'codex', cwd: '/x', state: 'live', status: 'idle', where: 'Delta / tab'},
       {address: 't7', agent: 'zsh', cwd: '/x', state: 'finished', exit_code: 1, reason: 'killed', where: 'Alpha / tab'},
       {address: 't8', agent: 'zsh', cwd: '/x', state: 'finished', where: 'Nowhere / tab'},
@@ -93,6 +94,117 @@ test('unrecognised agent names stay non-agent terminals', () => {
   assert.equal(project.shells, 3);
   assert.equal(project.status, 'none');
   assert.deepEqual(project.agentsByKind, {});
+});
+
+const shellOnlyHerdr = () => herdr([{id: 'sp1', name: 'One', tabs: [{terminals: [term('t1', null, null)]}]}]);
+
+test('hc failure keeps app-less terminals unknown, not shells or "no agents"', () => {
+  for (const hcResult of [{ok: false, error: 'timeout'}, {ok: false, error: 'not_found'}, {ok: true, stdout: 'not json'}, {ok: true, stdout: '{"terminals":"x"}'}, undefined]) {
+    const snapshot = normalizeSnapshot({herdr: shellOnlyHerdr(), hc: hcResult}, observedAt);
+    const [project] = snapshot.projects;
+    assert.notEqual(snapshot.sources.hc.state, 'ok');
+    assert.equal(project.status, 'unknown');
+    assert.equal(project.agents, 0);
+    assert.equal(project.unidentified, 1);
+    assert.equal(project.shells, 0);
+    assert.equal(project.counts.unknown, 1);
+    assert.equal(project.ended, null);
+    assert.equal(snapshot.unattributedEnded, null);
+  }
+});
+
+test('hc failure still trusts Herdr app identity and keeps other states visible', () => {
+  const snapshot = normalizeSnapshot({
+    herdr: herdr([{id: 'sp1', name: 'One', tabs: [{terminals: [term('t1', 'codex', 'blocked'), term('t2', null, null)]}]}]),
+    hc: {ok: false, error: 'timeout'},
+  }, observedAt);
+  const [project] = snapshot.projects;
+  assert.equal(project.status, 'blocked');
+  assert.equal(project.agents, 1);
+  assert.equal(project.unidentified, 1);
+  assert.deepEqual(project.counts, {blocked: 1, review: 0, waiting: 0, unknown: 1, working: 0});
+});
+
+test('a terminal missing from a healthy hc listing is unknown; a known shell is a shell', () => {
+  const snapshot = normalizeSnapshot({
+    herdr: herdr([{id: 'sp1', name: 'One', tabs: [{terminals: [term('t1', null, null), term('t2', null, null)]}]}]),
+    hc: hc([{address: 't2', agent: 'zsh', state: 'live'}]),
+  }, observedAt);
+  const [project] = snapshot.projects;
+  assert.equal(project.unidentified, 1);
+  assert.equal(project.shells, 1);
+  assert.equal(project.status, 'unknown');
+  assert.equal(project.ended, 0);
+  assert.equal(snapshot.unattributedEnded, 0);
+});
+
+test('duplicate and non-string space IDs produce unique, stable output IDs', () => {
+  const spaces = [
+    {id: 'spSame', name: 'First', tabs: []},
+    {id: 'spSame', name: 'Second', tabs: []},
+    {id: 'spSame~2', name: 'Third', tabs: []},
+    {id: 42, name: 'Number', tabs: []},
+    {id: '42', name: 'String 42', tabs: []},
+    {name: 'No id A', tabs: []},
+    {name: 'No id B', tabs: []},
+    {id: {nested: true}, name: 'Object', tabs: []},
+    null,
+  ];
+  const first = normalizeSnapshot({herdr: herdr(spaces), hc: hc([])}, observedAt);
+  const ids = first.projects.map(p => p.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(ids.length, 8);
+  const byName = Object.fromEntries(first.projects.map(p => [p.name, p.id]));
+  assert.equal(byName.First, 'spSame');
+  assert.notEqual(byName.Second, byName.First);
+  assert.notEqual(byName.Third, byName.Second);
+  assert.notEqual(byName.Number, byName['String 42']);
+  assert.notEqual(byName['No id A'], byName['No id B']);
+  for (const id of ids) assert.match(id, /^[A-Za-z0-9_~-]{1,80}$/);
+  const again = normalizeSnapshot({herdr: herdr(spaces), hc: hc([])}, observedAt);
+  assert.deepEqual(again.projects.map(p => [p.name, p.id]), first.projects.map(p => [p.name, p.id]));
+});
+
+test('ended counts attribute to the right project after invalid spaces are skipped', () => {
+  const snapshot = normalizeSnapshot({
+    herdr: herdr([null, {id: 'spA', name: 'A', tabs: []}, {id: 'spB', name: 'B', tabs: []}]),
+    hc: hc([{address: 't9', agent: 'zsh', state: 'finished', where: 'B / tab'}]),
+  }, observedAt);
+  const byName = Object.fromEntries(snapshot.projects.map(p => [p.name, p]));
+  assert.equal(byName.A.ended, 0);
+  assert.equal(byName.B.ended, 1);
+});
+
+test('UI labels render unknown values as unknown, never zero', () => {
+  assert.equal(countLabel(null), '未知（hc 無法讀取）');
+  assert.equal(countLabel(undefined), '未知（hc 無法讀取）');
+  assert.equal(countLabel(0), '0');
+  assert.equal(agentSummaryLabel({agents: 0, unidentified: 2}), '代理身分未知');
+  assert.equal(agentSummaryLabel({agents: 0, unidentified: 0}), '沒有代理終端');
+  assert.equal(agentSummaryLabel({agents: 2, unidentified: 1}), '2 個代理 · 1 個身分未知');
+  assert.match(unattributedEndedNote({available: true, unattributedEnded: null}), /未知/);
+  assert.match(unattributedEndedNote({available: true, unattributedEnded: 3}), /3 個已結束終端/);
+  assert.equal(unattributedEndedNote({available: true, unattributedEnded: 0}), '');
+  assert.equal(unattributedEndedNote({available: false, unattributedEnded: null}), '');
+});
+
+test('observed time includes the date', () => {
+  const label = formatObservedTime(observedAt);
+  assert.match(label, /2026/);
+  assert.match(label, /11/);
+  assert.equal(formatObservedTime('nope'), '未知時間');
+});
+
+test('focus trap wraps Tab and Shift+Tab inside the dialog', () => {
+  const panel = {name: 'panel'}, a = {name: 'a'}, b = {name: 'b'}, c = {name: 'c'};
+  const items = [a, b, c];
+  assert.equal(focusTrapTarget({items, active: c, inside: true, shiftKey: false, panel}), a);
+  assert.equal(focusTrapTarget({items, active: a, inside: true, shiftKey: true, panel}), c);
+  assert.equal(focusTrapTarget({items, active: panel, inside: true, shiftKey: true, panel}), c);
+  assert.equal(focusTrapTarget({items, active: b, inside: true, shiftKey: false, panel}), null);
+  assert.equal(focusTrapTarget({items, active: {}, inside: false, shiftKey: false, panel}), a);
+  assert.equal(focusTrapTarget({items, active: {}, inside: false, shiftKey: true, panel}), c);
+  assert.equal(focusTrapTarget({items: [], active: {}, inside: false, shiftKey: false, panel}), panel);
 });
 
 test('source failures make the project list unknown, not empty-and-idle', () => {

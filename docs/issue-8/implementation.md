@@ -11,7 +11,7 @@ This session cannot approve its own work. The independent Codex and Claude revie
 | `server/project-overview.mjs` (new) | Read-only adapter and Vite plugin serving `GET /api/project-overview`. |
 | `src/ProjectOverview.jsx` (new) | Overview panel: full screen on mobile (≤640px), right-hand drawer on desktop. The island view stays underneath. |
 | `src/project-overview-utils.mjs` (new) | Pure display helpers: status labels, freshness, error mapping, summary. |
-| `tests/project-overview.test.mjs` (new) | 15 unit tests. |
+| `tests/project-overview.test.mjs` (new) | 23 unit tests (after round 1). |
 | `src/App.jsx` | +1 import, one `overviewOpen` state with a stable close callback, a top-bar trigger button and one `<ProjectOverview>` render. |
 | `src/styles.css` | Overview styles, plus a ≤480px top-bar fix so `連接來源` does not wrap after the new button was added. |
 | `vite.config.mjs` | Registers `projectOverviewPlugin()`. Host, port and `allowedHosts` are unchanged. |
@@ -29,6 +29,9 @@ Unchanged: `.openai/hosting.json`, `worker/index.js`, `scripts/prepare-sites-bui
   - project ID (Herdr space ID if `[A-Za-z0-9_-]{1,64}`, otherwise an opaque `p_<sha256 prefix>`)
   - sanitized project name
   - per-status agent counts and agent-kind counts (Claude Code, Codex, Hermes)
+  - Terminal identity (round 1): if Herdr gives no `app` and hc cannot vouch for the terminal (hc failed, hc output invalid, or the address is missing from hc), the terminal is counted as `unidentified` and as `counts.unknown`. It is not counted as a shell or as "no agents". A project whose only terminals are unidentified rolls up to `unknown`, not `none`.
+  - Ended counts (round 1): `ended` per project and `unattributedEnded` are `null` (unknown) when hc is not `ok`, never `0`.
+  - Output IDs (round 1): distinct spaces that share an ID (or have missing/non-string IDs that hash the same) get a `~2`, `~3`… suffix in source order, so output IDs are unique and stable for the same input.
   - Agent kind aliases: hc may report Claude Code as `agent:"claude"`; that exact value is normalized to `claude-code`. Any other unrecognized value (e.g. `Claude`, `claude-desktop`, `zsh`) is still counted as a plain terminal, not an agent.
   - tab, shell, sub-agent and ended-terminal counts
 - **Fields dropped.** Never emitted: `cwd`, `folder`, `recent`, tab names, terminal names, `exit_code`, `reason`, `where` and terminal text.
@@ -56,7 +59,7 @@ Unchanged: `.openai/hosting.json`, `worker/index.js`, `scripts/prepare-sites-bui
   - the summary counts are hidden so that zeros are not presented as known values
   - Each source reports `ok`, or `error` with one of `not_found`, `timeout`, `output_too_large`, `invalid_output` or `failed`.
 - **Timestamps.** The sources give no work-update time, so `updatedAt:null` and `timeBasis:"observed"`.
-  - The UI shows "觀測於 HH:MM:SS — 時間為伺服器觀測時間，並非專案工作更新時間".
+  - The UI shows "觀測於 YYYY/MM/DD HH:MM:SS — 時間為伺服器觀測時間，並非專案工作更新時間". The date was added in round 1 so an old snapshot is not mistaken for today's.
   - Data is marked stale after `staleAfterMs` (60s). Per-project "最後工作更新" shows 未知.
 - **Shared snapshot.** One snapshot is shared by desktop and mobile:
   - 5s TTL, and concurrent requests share the run already in flight
@@ -106,6 +109,22 @@ Bug: with Herdr terminal `t1` reporting `app:null` and hc reporting `address:t1,
 
 As instructed for this round, no browser, network or permission changes were made; build, `test:sites` and `test:integrations` were not re-run after the fix (the fix touches only `server/project-overview.mjs` and its test).
 
+### Round 1 fixes (after independent review of `1b9f9fd`)
+
+Isolation note for this round:
+- The build ran with a cleared environment and `AI_OFFICE_SETTINGS_PATH` pointing at a scratchpad file that does not exist.
+- This matters because `vite.config.mjs` calls `loadEnvironmentConnections()` at load, so a plain `npm run build` reads the configured settings file. **Disclosure:** the earlier round-0 `npm run build` runs used the default environment. The canonical `settings.yaml` exists, so those builds probably decrypted it through the Keychain helper and may have contacted the saved provider endpoints to list models. This was not intended, and the round-0 record above did not say so.
+
+| Command | Result |
+| --- | --- |
+| `npm run test:overview` | exit 0 · tests 23 · pass 23 · fail 0 |
+| `node --test tests/credential-storage.test.mjs tests/notification-utils.test.mjs tests/quota-values.test.mjs tests/project-overview.test.mjs` | exit 0 · tests 33 · pass 33 · fail 0 |
+| `env -i PATH HOME AI_OFFICE_SETTINGS_PATH=<scratchpad>/empty-settings.yaml node ./node_modules/vite/bin/vite.js build && node scripts/prepare-sites-build.mjs` | exit 0 · `✓ built`; `dist/client/index.html`, `dist/server/index.js`, `dist/.openai/hosting.json` present |
+| `npm run test:sites` | exit 0 · tests 4 · pass 4 · fail 0 |
+| `git diff --check` | exit 0 |
+
+Not run this round, as instructed: `npm run test:integrations` (live integrations), the browser, the network, and the dev server.
+
 ### Live checks against the endpoint
 
 These ran on an isolated dev server (`127.0.0.1:4188`). `AI_OFFICE_SETTINGS_PATH` pointed at a scratchpad file that does not exist and the environment was cleared, so no saved credentials or Keychain were read.
@@ -120,6 +139,8 @@ These ran on an isolated dev server (`127.0.0.1:4188`). `AI_OFFICE_SETTINGS_PATH
 A server with `PATH=/usr/bin:/bin` (Herdr CLIs not reachable) returned 200 with `available:false`, both sources `error/not_found`, and `projects:[]`.
 
 ### Browser checks (ego-browser, viewport set with CDP)
+
+These were run by the implementer in round 0, against the round-0 code, and have **not been independently verified**. They were not re-run after the round-1 fixes; the round-1 UI changes (focus trap, unknown identity and ended rendering, dated timestamp) are covered only by pure unit tests of their helpers.
 
 - **390×844 mobile:**
   - the panel fills the 390px width with no horizontal page scroll
@@ -137,6 +158,21 @@ A server with `PATH=/usr/bin:/bin` (Herdr CLIs not reachable) returned 200 with 
 
 ## Not done / remaining acceptance
 
-- Independent reviews by real Codex and real Claude on the same candidate SHA. Round ledger: 0 rounds completed.
-- Checks on a real phone and on a private secure access route: deferred, unverified, not authorized.
+- Independent reviews: see the review round ledger below. The round-1 fix commit needs both providers to review the same new SHA.
+- **Real-phone acceptance is deferred**, as is access over a private secure route: unverified and not authorized. All mobile evidence comes from a 390×844 desktop-browser viewport.
 - No automated UI component test runner exists in the repo. UI loading, retry, offline and race behaviour was checked manually in the browser, as listed above.
+
+## Review round ledger
+
+### Round 1 — candidate `1b9f9fd069333580c3a91bff0ef142cde9ed0b76`
+
+Reviewers, as reported to the implementer by the user's workflow: Codex, and a separate Claude session (t21). The implementer did not see their raw transcripts and records the findings as relayed.
+
+| # | Finding | Disposition |
+| --- | --- | --- |
+| 1 | When hc fails or returns invalid output and Herdr gives no `app`, the terminal was counted as a shell, so the project showed "no agents"/`none`; ended counts showed `0` | **Fixed.** Such terminals are now `unidentified` and `unknown`; `ended` and `unattributedEnded` are `null`; the UI shows 代理身分未知 / 身分未知終端 / 未知（hc 無法讀取）. Tests: failed (timeout, not_found), invalid (non-JSON, wrong shape) and missing hc fixtures; Herdr-app identity is still trusted when hc fails; UI label helpers. |
+| 2 | Distinct spaces with duplicate valid IDs produced duplicate React keys, and the second project's detail opened the first | **Fixed.** Output IDs are made unique in source order (`~n` suffix). Tests cover duplicate, colliding-suffix, number vs string, missing and object IDs, plus stability. Also fixed while here: ended-count attribution used indexes into the unfiltered space list, so a `null` space shifted ended counts to the wrong project (test added). |
+| 3 | `aria-modal` dialog had no Tab focus trap | **Fixed.** Tab and Shift+Tab wrap inside the panel, and focus that has escaped is pulled back. Escape-to-close and focus return to the trigger are unchanged. The decision logic is a pure helper with unit tests; the trap itself has not been verified in a browser. |
+| 4 | Unattributed ended terminals were not shown; the observed time had no date | **Fixed.** The list shows "另有 N 個已結束終端無法對應到單一專案", or explains that the count is unknown when hc is unavailable. The observed time now includes the date. |
+
+Round 1 result: findings, so not a clean review. The fix commit, which contains this file and whose SHA it therefore cannot quote, becomes the **round 2 candidate**. Both Codex and Claude must review that same SHA. Rounds used: 1 of 5.

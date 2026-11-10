@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {ArrowClockwise, CaretLeft, CaretRight, X} from '@phosphor-icons/react';
-import {AGENT_LABELS, formatObservedTime, freshness, overviewErrorKind, sourceErrorLabel, statusMeta, summarizeProjects} from './project-overview-utils.mjs';
+import {AGENT_LABELS, agentSummaryLabel, countLabel, focusTrapTarget, formatObservedTime, freshness, overviewErrorKind, sourceErrorLabel, statusMeta, summarizeProjects, unattributedEndedNote} from './project-overview-utils.mjs';
 
 const ERROR_COPY = {
   offline: '裝置目前離線，無法讀取專案狀態。',
@@ -10,6 +10,15 @@ const ERROR_COPY = {
   error: '讀取專案狀態失敗；狀態視為未知。',
 };
 const SUMMARY_KEYS = ['blocked', 'review', 'waiting', 'unknown', 'working'];
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Keeps Tab and Shift+Tab inside the dialog.
+function trapTab(event, panel) {
+  if (!panel) return;
+  const active = document.activeElement;
+  const target = focusTrapTarget({items: [...panel.querySelectorAll(FOCUSABLE)], active, inside: panel.contains(active), shiftKey: event.shiftKey, panel});
+  if (target) { event.preventDefault(); target.focus(); }
+}
 
 function StatusPill({status}) {
   const meta = statusMeta(status);
@@ -64,7 +73,10 @@ export default function ProjectOverview({open, onClose, publicDemo}) {
     const tick = setInterval(() => setNow(Date.now()), 15_000);
     const offline = () => setErrorKind('offline');
     const online = () => load(true);
-    const key = event => { if (event.key === 'Escape') onCloseRef.current(); };
+    const key = event => {
+      if (event.key === 'Escape') onCloseRef.current();
+      else if (event.key === 'Tab') trapTab(event, panelRef.current);
+    };
     window.addEventListener('offline', offline);
     window.addEventListener('online', online);
     document.addEventListener('keydown', key);
@@ -125,11 +137,12 @@ export default function ProjectOverview({open, onClose, publicDemo}) {
             {SUMMARY_KEYS.map(key => <div key={key}><dt>{statusMeta(key).label}</dt><dd>{project.counts?.[key] ?? 0}</dd></div>)}
           </dl>
           <dl className="overview-facts">
+            {project.unidentified > 0 && <div><dt>身分未知終端</dt><dd>{project.unidentified}（無法確認是否為代理）</dd></div>}
             <div><dt>代理終端</dt><dd>{project.agents}{Object.entries(project.agentsByKind || {}).length ? ` · ${Object.entries(project.agentsByKind).map(([kind, count]) => `${AGENT_LABELS[kind] || kind} ${count}`).join('、')}` : ''}</dd></div>
             <div><dt>子代理</dt><dd>{project.subAgents}</dd></div>
             <div><dt>分頁</dt><dd>{project.tabs}</dd></div>
             <div><dt>一般終端</dt><dd>{project.shells}</dd></div>
-            <div><dt>已結束終端</dt><dd>{project.ended}</dd></div>
+            <div><dt>已結束終端</dt><dd>{countLabel(project.ended)}</dd></div>
             <div><dt>最後工作更新</dt><dd>未知（來源未提供）</dd></div>
           </dl>
           <p className="overview-note">代理回合結束不代表產品完成。此總覽不包含 PR、建置、部署或驗收資訊，也不讀取終端內容。</p>
@@ -145,13 +158,14 @@ export default function ProjectOverview({open, onClose, publicDemo}) {
               <button type="button" onClick={() => setProjectId(item.id)}>
                 <span className="overview-project-copy">
                   <strong>{item.name}</strong>
-                  <small>{item.agents ? `${item.agents} 個代理` : '沒有代理終端'}{item.counts?.blocked ? ` · ${item.counts.blocked} 受阻` : ''}{item.counts?.review ? ` · ${item.counts.review} 待確認` : ''}{item.counts?.waiting ? ` · ${item.counts.waiting} 待命` : ''}{item.counts?.working ? ` · ${item.counts.working} 進行中` : ''}{item.counts?.unknown ? ` · ${item.counts.unknown} 未知` : ''}</small>
+                  <small>{agentSummaryLabel(item)}{item.counts?.blocked ? ` · ${item.counts.blocked} 受阻` : ''}{item.counts?.review ? ` · ${item.counts.review} 待確認` : ''}{item.counts?.waiting ? ` · ${item.counts.waiting} 待命` : ''}{item.counts?.working ? ` · ${item.counts.working} 進行中` : ''}{item.counts?.unknown ? ` · ${item.counts.unknown} 未知` : ''}</small>
                 </span>
                 <StatusPill status={item.status}/>
                 <CaretRight size={14}/>
               </button>
             </li>)}
           </ul>
+          {unattributedEndedNote(snapshot) && <p className="overview-note">{unattributedEndedNote(snapshot)}</p>}
         </>}
         <p className="overview-footnote">僅限本機 loopback；手機透過網路遠端存取尚未驗證。</p>
       </>}
