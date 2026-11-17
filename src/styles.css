@@ -192,3 +192,65 @@
 @media(max-width:640px){.overview-shade{background:#fffefb}.project-overview{width:100%;border-left:0;box-shadow:none;padding:14px 16px 18px}.project-overview-trigger{width:31px;height:31px}.overview-summary span,.overview-counts div{padding:7px 2px}}
 @media(max-width:480px){.office-switch{max-width:136px}.connect-source{white-space:nowrap}}
 .overview-partial{border-color:#efdcae;background:#fdf6e7;color:#8a6420}.overview-partial span{display:flex;flex-direction:column;gap:3px}.overview-partial small{font-size:10px;line-height:1.45}
+/* Agent status lamps and labels (issue #12). Each tone pairs a color with readable text. */
+:root{--status-working:#2f9a57;--status-idle:#6f86a0;--status-blocked:#d39222;--status-done:#1f9a92;--status-unknown:#9aa39f;--status-offline:#c94d43;--status-error:#9b3f8c}
+.status-lamp{display:inline-block;flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--status-unknown);box-shadow:0 0 0 2px #fff}
+.status-lamp.tone-working,.tone-working>.status-lamp{background:var(--status-working)}
+.status-lamp.tone-idle,.tone-idle>.status-lamp{background:var(--status-idle)}
+.status-lamp.tone-blocked,.tone-blocked>.status-lamp{background:var(--status-blocked)}
+.status-lamp.tone-done,.tone-done>.status-lamp{background:var(--status-done)}
+.status-lamp.tone-unknown,.tone-unknown>.status-lamp{background:var(--status-unknown)}
+.status-lamp.tone-offline,.tone-offline>.status-lamp{background:var(--status-offline)}
+.status-lamp.tone-error,.tone-error>.status-lamp{background:var(--status-error);border-radius:2px}
+.map-status-lamp{position:absolute;right:7px;bottom:8px;width:10px;height:10px}
+.map-bot.status-working .map-status-lamp{animation:status-pulse 1.8s ease-in-out infinite}
+@keyframes status-pulse{50%{box-shadow:0 0 0 2px #fff,0 0 0 5px #2f9a5738}}
+@media(prefers-reduced-motion:reduce){.map-bot.status-working .map-status-lamp{animation:none}}
+.map-status-tag{margin-top:2px;font-size:8px;font-weight:600;line-height:1;padding:3px 6px;border-radius:999px;white-space:nowrap;background:#fffffff2;border:1px solid;box-shadow:0 2px 5px #3b5a4910}
+.map-status-tag.tone-working{color:#21703f;border-color:#b9dcc5}
+.map-status-tag.tone-idle{color:#4d6178;border-color:#cdd8e4;background:#f3f6fa}
+.map-status-tag.tone-blocked{color:#8a5c08;border-color:#ecd29b;background:#fdf5e3}
+.map-status-tag.tone-done{color:#13716b;border-color:#b2dfdb}
+.map-status-tag.tone-unknown{color:#6c7470;border-color:#dfe3e0;background:#f4f5f4}
+.map-status-tag.tone-offline{color:#9c3a31;border-color:#ecc3be;background:#fcefed}
+.map-status-tag.tone-error{color:#7d2c70;border-color:#e3bfdc;background:#faeef8}
+.agent-status{display:inline-flex;align-items:center;gap:5px;font-size:9px;font-weight:500;white-space:nowrap;color:#5d6d66}
+.agent-status.tone-working{color:#21703f}.agent-status.tone-idle{color:#4d6178}.agent-status.tone-blocked{color:#8a5c08}.agent-status.tone-done{color:#13716b}.agent-status.tone-offline{color:#9c3a31}.agent-status.tone-error{color:#7d2c70}
+.agent-status .status-lamp{width:7px;height:7px;box-shadow:none}
+.member-link>.agent-status{margin-left:auto}
+.agent-status.member-state{margin-left:auto}
+.agent-status.header-agent-status{margin-right:8px;font-size:10px}
+.agent-status.is-large{font-size:15px;font-weight:600;gap:8px}
+.agent-status.is-large .status-lamp{width:12px;height:12px}
+.status-legend{position:absolute;right:19px;bottom:64px;z-index:5;pointer-events:none;padding:8px 10px;background:#fffffff0;border:1px solid #e4eae1;border-radius:10px;box-shadow:0 3px 14px #506c5614;font-size:9px;color:#4e625a}
+.status-legend strong{display:block;font-size:9px;font-weight:600;margin-bottom:5px;color:#3d544b}
+.status-legend ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,auto);gap:4px 10px}
+.status-legend li{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.status-legend .status-lamp{width:7px;height:7px;box-shadow:none}
+.core-terminal-details{flex:1;overflow:auto;padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.core-status-card{border:1px solid var(--border);border-radius:12px;padding:16px 18px;background:#fbfcfa;display:flex;flex-direction:column;gap:12px}
+.core-status-card dl{margin:0;display:grid;gap:8px;font-size:12px}
+.core-status-card dl>div{display:grid;grid-template-columns:72px 1fr;gap:10px}
+.core-status-card dt{color:var(--muted)}
+.core-status-card dd{margin:0;color:#304a42;word-break:break-word}
+.integration-mark.core-mark{background:linear-gradient(145deg,#4f6f86,#30475a);font-size:13px}
+@media(max-width:640px){.status-legend{right:11px;bottom:48px;padding:6px 7px;font-size:8px}.status-legend strong{display:none}.status-legend ul{gap:3px 7px}.map-status-tag{font-size:7px;padding:2px 5px}.agent-status.member-state{display:inline-flex}}
+.agent-status.favorite-status{margin-top:3px;font-size:9px}
+.core-message-list{display:flex;flex-direction:column;gap:12px}
+.core-message{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.core-message .message-meta{justify-content:flex-end;color:var(--muted);margin-bottom:0}
+.core-message .bubble{background:#e7efdf;border-color:#e1e9d7;color:#53694a;border-radius:11px 0 11px 11px;max-width:100%}
+.core-message-empty{margin:0;font-size:11px;color:var(--muted)}
+.core-delivery{margin:0;max-width:100%;display:flex;flex-direction:column;gap:2px;font-size:11px;line-height:1.6;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:#fbfcfa;color:#4b5b54}
+.core-delivery strong{font-size:11px}
+.core-delivery.tone-submitted{border-color:#bfe0cb;background:#f1f9f3}
+.core-delivery.tone-submitted strong{color:var(--status-working)}
+.core-delivery.tone-failed{border-color:#efcbc5;background:#fdf4f2}
+.core-delivery.tone-failed strong{color:var(--status-offline)}
+.core-delivery.tone-uncertain{border-color:#f0d9a8;background:#fdf8ec}
+.core-delivery.tone-uncertain strong{color:#9a6a12}
+.core-composer{display:flex;flex-direction:column;gap:6px}
+.core-send-warning{margin:0;font-size:11px;line-height:1.6;color:#4b5b54}
+.core-send-blocked{margin:0;font-size:11px;line-height:1.6;color:#8a5a12;background:#fdf8ec;border:1px solid #f0d9a8;border-radius:8px;padding:6px 9px}
+.core-composer.is-readonly textarea{cursor:not-allowed}
+.core-composer .composer-bottom>button:disabled{background:#b9c4b2;cursor:not-allowed}
