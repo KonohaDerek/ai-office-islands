@@ -28,7 +28,8 @@ export function selectMentionedAgents(text, group, resolveAgent) {
 }
 
 function isLiveAgent(agent) {
-  return Boolean(agent && !agent.codexReadOnly && agent.source !== 'CodexCLI');
+  // Observed Herdr Core terminals are status-only; group dispatch must never answer on their behalf.
+  return Boolean(agent && !agent.codexReadOnly && agent.source !== 'CodexCLI' && !agent.coreObserved && agent.source !== 'HerdrCore');
 }
 
 function escapeRegExp(value) {

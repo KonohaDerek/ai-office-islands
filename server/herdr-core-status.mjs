@@ -46,6 +46,7 @@ export const RECONNECT_DELAYS_MS = Object.freeze([1_000, 2_000, 5_000, 10_000, 1
 export const IDLE_STOP_MS = 45_000;
 export const MAX_LINE_BYTES = 16 * 1024 * 1024;
 export const MAX_TERMINALS = 200;
+const MAX_PENDING_NOTIFICATIONS = 1000;
 const ADDRESS_PATTERN = /^t[0-9A-Za-z]{1,32}$/;
 const SESSION_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
 
@@ -294,6 +295,9 @@ export class HerdrCoreStatusSource {
   async connectOnce() {
     const epoch = ++this.epoch;
     this.connection = 'connecting';
+    // Notifications that arrive before the subscription snapshot is installed are replayed after it, in order.
+    const pending = [];
+    this.pending = pending;
     let conn;
     try {
       conn = openCoreConnection(this.connect, this.socketPath, {
@@ -317,6 +321,11 @@ export class HerdrCoreStatusSource {
       this.attempt = 0;
       this.lastMessageAt = this.now();
       this.armWatchdog(epoch);
+      this.pending = null;
+      for (const message of pending) {
+        if (epoch !== this.epoch) break;
+        this.handleNotification(message);
+      }
     } catch (error) {
       if (epoch === this.epoch) this.goOffline(error?.code || 'connect_failed');
       else conn?.close();
@@ -356,7 +365,11 @@ export class HerdrCoreStatusSource {
 
   handleNotification(message) {
     this.lastMessageAt = this.now();
-    if (message?.malformed || this.connection !== 'connected') return;
+    if (message?.malformed) return;
+    if (this.connection !== 'connected') {
+      if (this.connection === 'connecting' && this.pending && this.pending.length < MAX_PENDING_NOTIFICATIONS) this.pending.push(message);
+      return;
+    }
     const params = message.params && typeof message.params === 'object' ? message.params : {};
     if (message.method === 'heartbeat') {
       // seq is core-wide; with a label filter, events for other terminals advance it without reaching us.
