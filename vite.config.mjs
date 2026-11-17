@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { integrationsPlugin, loadEnvironmentConnections } from "./server/integrations.mjs";
 import { projectOverviewPlugin } from "./server/project-overview.mjs";
+import { agentStatusPlugin } from "./server/herdr-core-status.mjs";
 
 await loadEnvironmentConnections();
 
@@ -20,5 +21,5 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [react(), integrationsPlugin(), projectOverviewPlugin()],
+  plugins: [react(), integrationsPlugin(), projectOverviewPlugin(), agentStatusPlugin()],
 });
