@@ -15,6 +15,12 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        # Explicit bash enables pipefail, so a failing command still fails the step when piped to tee.
+        shell: bash
+    env:
+      CI_LOG: ${{ runner.temp }}/ci-failure.log
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,13 +29,22 @@ jobs:
         with:
           node-version: 24
       - name: Install dependencies
-        run: npm install --no-package-lock
+        run: npm install --no-package-lock 2>&1 | tee -a "$CI_LOG"
       - name: Build Sites bundle
-        run: npm run build
+        run: npm run build 2>&1 | tee -a "$CI_LOG"
       - name: Test Sites worker and build output
-        run: npm run test:sites
+        run: npm run test:sites 2>&1 | tee -a "$CI_LOG"
       - name: Test quota and notification helpers
-        run: node --test tests/quota-values.test.mjs tests/notification-utils.test.mjs
+        run: node --test tests/quota-values.test.mjs tests/notification-utils.test.mjs 2>&1 | tee -a "$CI_LOG"
+      # Consumed by the "Codex CI autofix proposal" workflow.
+      - name: Upload failure report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-report
+          path: ${{ runner.temp }}/ci-failure.log
+          if-no-files-found: ignore
+          retention-days: 1
 
   report-failure:
     if: ${{ failure() && github.event_name == 'pull_request' }}
