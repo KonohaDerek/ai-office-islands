@@ -192,3 +192,10 @@
 @media(max-width:640px){.overview-shade{background:#fffefb}.project-overview{width:100%;border-left:0;box-shadow:none;padding:14px 16px 18px}.project-overview-trigger{width:31px;height:31px}.overview-summary span,.overview-counts div{padding:7px 2px}}
 @media(max-width:480px){.office-switch{max-width:136px}.connect-source{white-space:nowrap}}
 .overview-partial{border-color:#efdcae;background:#fdf6e7;color:#8a6420}.overview-partial span{display:flex;flex-direction:column;gap:3px}.overview-partial small{font-size:10px;line-height:1.45}
+.avatar.pixel-ready img{image-rendering:pixelated}
+.avatar.pixel:not(.character){background:#e7eee0}
+.avatar-style-field{display:flex;flex-direction:column;gap:8px;margin:0 0 17px;font-size:11px;font-weight:600;color:#5f7068}.avatar-style-field small{font-size:10px;font-weight:400;color:#87947f}
+.avatar-style-toggle{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border:1px solid #e5ebdf;border-radius:9px;background:#f4f7ef}
+.avatar-style-toggle button{padding:8px 10px;border-radius:6px;color:#6f806f;font-size:11px;font-weight:600}.avatar-style-toggle button:hover{background:#eaf0e3}
+.avatar-style-toggle button.is-active,.avatar-style-toggle button[aria-pressed=true]{background:#fff;color:#2f5546;box-shadow:0 1px 3px rgba(41,63,58,.14)}
+.avatar-style-toggle button:focus-visible{outline:3px solid #83b6a4;outline-offset:2px}
