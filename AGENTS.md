@@ -28,3 +28,45 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 - Keep characters on explicit, scene-specific walkable map paths. Animate slow directional steps along those paths and stop before group buildings or department signs; never use unconstrained wandering that can move an avatar over water or buildings.
 - Prioritize useful in-island group collaboration before public Telegram/Discord webhooks. Manage group membership in the Members tab. Let users invite members into a conversation with @name or “everyone”; infer discussion versus task assignment from the message itself, with the coordinator as the default when no member is mentioned. Invited Agents respond in sequence and see earlier replies. Make per-Agent model calls and resulting usage clear, and never claim a text response executed external work unless that Agent has and used an authorized tool.
+
+<!-- personal-aaw:start -->
+## Shared personal development workflow
+
+For every new development task, read `.agents/skills/ai-agent-workflow/SKILL.md`.
+The pinned, checksum-verified workflow source is
+`~/.local/share/ai-agent-workflow/releases/v2.2.0/` (KonohaDerek/ai-agent-workflow release v2.2.0).
+Read that release's `AGENTS.md`, `routing/policy.json`, and the current-phase skill
+under its `.agents/skills/`; paths in the shared skill refer to that release,
+not to this application repository. Run shared `aaw` commands with that release's
+`scripts` on PYTHONPATH. Never substitute a dirty development checkout for the release.
+If the pinned release is unavailable on another machine, report setup as missing;
+do not silently skip the workflow or invent successful checks.
+
+Keep all existing repository/product instructions. The shared workflow supplements
+rather than replaces them. User authorization and stricter safety/project constraints
+still apply. A plan, issue, or panel does not authorize unrelated external actions.
+
+- Before substantive implementation, identify the issue/task and create a dedicated
+  branch and separate git worktree. Inspect the base revision and working tree first.
+  Do not implement directly on main/master or move/reset/clean someone else's changes.
+  Existing dirty or active work stays untouched until a safe, authorized handoff exists.
+- Create every worktree for this repository under the project's own `.worktree/`
+  folder, e.g. `git worktree add .worktree/<short-task-name> -b <branch>`. Never
+  place worktrees in `/tmp`, `/private/tmp`, or other locations outside the project:
+  they scatter across the machine and temp directories get cleaned by the system.
+- Follow repository-specific design/OpenSpec and test requirements. Record exact
+  commands, passed/failed/not-run results, and the revision tested. Keep code complete,
+  PR merged, deployed, and user-accepted as separate states.
+- When PR creation is authorized, create a normal **Ready for review** PR, not a Draft,
+  unless the user explicitly requests a draft. Do not silently skip the PR step:
+  report the concrete blocker or the PR URL. No automatic merge or deployment.
+- When assigning implementation work, keep the assignment and its worktree/branch,
+  issue, validation and PR evidence in the project's conversation. Herdr Spaces/panels
+  are visibility surfaces, not a replacement for Git isolation or permission checks.
+- Before deleting branches, worktrees or data, provide an itemized list and wait for
+  the user's deletion decision. Never treat completed agent output as deletion approval.
+
+This is instruction-based integration, not an enforcement hook or background dispatcher.
+
+Also read `.agents/personal-workflow-overlay.md` for personal-project routing, proposals, implementation, review, and delivery gates.
+<!-- personal-aaw:end -->

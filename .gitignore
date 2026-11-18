@@ -11,6 +11,11 @@ settings.yaml.*.tmp
 node_modules/
 dist/
 .cache/
+# Per-task git worktrees live here; see AGENTS.md.
+.worktree/
+# Local workflow-tool backups and package-manager cache.
+.personal-workflow-backups/
+.pnpm-store/
 # Local design QA evidence can contain user-provided reference screenshots.
 /qa/
 /design-qa.md
