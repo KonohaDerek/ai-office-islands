@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        # Explicit bash enables pipefail, so a failing command still fails the step when piped to tee.
+        shell: bash
+    env:
+      CI_LOG: ${{ runner.temp }}/ci-failure.log
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install --no-package-lock 2>&1 | tee -a "$CI_LOG"
+      - name: Build Sites bundle
+        run: npm run build 2>&1 | tee -a "$CI_LOG"
+      - name: Test Sites worker and build output
+        run: npm run test:sites 2>&1 | tee -a "$CI_LOG"
+      - name: Test quota and notification helpers
+        run: node --test tests/quota-values.test.mjs tests/notification-utils.test.mjs 2>&1 | tee -a "$CI_LOG"
+      # Consumed by the "Codex CI autofix proposal" workflow.
+      - name: Upload failure report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-report
+          path: ${{ runner.temp }}/ci-failure.log
+          if-no-files-found: ignore
+          retention-days: 1
+
+  report-failure:
+    if: ${{ failure() && github.event_name == 'pull_request' }}
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const marker = '<!-- ai-office-ci-report -->';
+            const body = `${marker}\nCI 檢查失敗，請查看 [workflow run](${process.env.RUN_URL}) 的失敗步驟與日誌。若已設定 \\`OPENAI_API_KEY\\`，Codex 會嘗試產生一個獨立、待審查的修正 PR。`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body});
+            } else {
+              await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body});
+            }
